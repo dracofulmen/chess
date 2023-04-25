@@ -10,7 +10,7 @@ import numpy.typing as npt
     all edge cases appear to work
     
     notations to implement:
-        FEN for custom board https://www.chess.com/terms/fen-chess
+        FEN for custom board https://www.chess.com/terms/fen-chess (can use for threefold repetition rule as well)
     
     chess variants to add (use inheritance?):
         giveaway https://www.chess.com/terms/giveaway-chess
@@ -104,19 +104,33 @@ class Board:
         converts to string
         :return:
         """
-        retStr = "\033[0m     A   B   C   D   E   F   G   H  "
-        retStr += "\n\033[0m   ┌───┬───┬───┬───┬───┬───┬───┬───┐"
-        for row in range(15, 0, -1):
+
+        retStr = "\033[0m  "
+        for col in range(self.xSize):
+            retStr += "   " + chr(col + 65)
+        retStr += "\n\033[0m   ┌"
+        for col in range(self.xSize - 1):
+            retStr += "───┬"
+        retStr += "───┐"
+        for row in range(self.ySize * 2 - 1, 0, -1):
             match row % 2:
                 case 1:
                     retStr += "\n " + str(int((row + 1) / 2)) + " "
-                    for col in range(8):
+                    for col in range(self.xSize):
                         retStr += "\033[0m│\033[0m " + self.charAt((int((row - 1) / 2), col)) + " "
                     retStr += "\033[0m│ " + str(int((row + 1) / 2)) + " "
                 case 0:
-                    retStr += "\n\033[0m   ├───┼───┼───┼───┼───┼───┼───┼───┤"
-        retStr += "\n\033[0m   └───┴───┴───┴───┴───┴───┴───┴───┘"
-        retStr += "\n\033[0m     A   B   C   D   E   F   G   H  "
+                    retStr += "\n\033[0m   ├"
+                    for col in range(self.xSize - 1):
+                        retStr += "───┼"
+                    retStr += "───┤"
+        retStr += "\n\033[0m   └"
+        for col in range(self.xSize - 1):
+            retStr += "───┴"
+        retStr += "───┘"
+        retStr += "\n\033[0m  "
+        for col in range(self.xSize):
+            retStr += "   " + chr(col + 65)
         return retStr
 
     def printBoard(self) -> None:
@@ -796,7 +810,7 @@ class Board:
                             curPos = kingCoord + v
                             if 0 <= curPos[0] < self.ySize and 0 <= curPos[1] < self.xSize and not self.inCheck(curPos,
                                                                                                                 color) and not arrayInList(
-                                    curPos, blockList):
+                                curPos, blockList):
                                 optionList.append(curPos)
                         if len(optionList) != 0:
                             self.checkMoveDict[tuple(kingCoord)] = optionList

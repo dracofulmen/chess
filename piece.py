@@ -8,7 +8,7 @@ class Piece:
                  captureList: list = None):
         """
         init
-        :param pieceType: p=pawn, r=rook, n=knight, b=bishop, k=king, q=queen (for variants:
+        :param pieceType: p=pawn, r=rook, n=knight, b=bishop, k=king, q=queen (for variants: g=general (king+knight), z=amazon (queen + knight), h=archbishop/hawk (knight + bishop), e=chancellor/elephant (knight + rook), c=camel (knight + 1))
         :param color: 1=white, -1=black, 0=none
         :param moveList: custom move list; defaults to None
         :param blockList: custom block list; defaults to None
@@ -43,9 +43,9 @@ class Piece:
         :return: unicode character for the piece or None if empty
         """
         charDict = {'k1': '\u2654', 'q1': '\u2655', 'r1': '\u2656', 'b1': '\u2657', 'n1': '\u2658', 'p1': '\u2659',
-                    'k-1': '\u265a', 'q-1': '\u265b', 'r-1': '\u265c', 'b-1': '\u265d', 'n-1': '\u265e',
-                    'p-1': '\u265f',
-                    "None0": " "}
+                    'g1': '\u2664', 'z1': '\u2661', 'h1': '\u2662', 'e1': '\u2667', 'c1': '\u2616', 'k-1': '\u265a',
+                    'q-1': '\u265b', 'r-1': '\u265c', 'b-1': '\u265d', 'n-1': '\u265e', 'p-1': '\u265f',
+                    'g-1': '\u2660', 'z-1': '\u2665', 'h-1': '\u2666', 'e-1': '\u2663', 'c-1': '\u2617', "None0": " "}
         return charDict[str(self)]
 
 

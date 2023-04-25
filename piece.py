@@ -4,7 +4,7 @@ import numpy.typing as npt
 
 class Piece:
 
-    def __init__(self, pieceType: str | None, color: int | None, moveList: list = None, blockList: list = None,
+    def __init__(self, pieceType: str | None, color: int, moveList: list = None, blockList: list = None,
                  captureList: list = None):
         """
         init

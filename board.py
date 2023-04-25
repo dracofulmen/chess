@@ -5,6 +5,7 @@ from piece import King
 import errors
 import numpy as np
 import numpy.typing as npt
+from collections import Counter
 
 """         
     all edge cases appear to work
@@ -31,61 +32,42 @@ import numpy.typing as npt
 # TODO: big things: rewrite without numpy
 
 class Board:
-    def __init__(self, customPieces: list[str] = None,
-                 customStart: list[str] = None, castleChecks: dict[[bool]] = None,
-                 epCoord: npt.NDArray[int] | None = None, turnColor: int = 1):
+    def __init__(self, customBoard: list[str] = None, customStart: list[str] = None, xSize: int = 8, ySize: int = 8):
         """
         initializes the board
-        :param customPieces: custom starting pieces; format is type algebra color
+        :param customBoard: custom board in FEN format (list of strings)
         :param customStart: list of starting moves; will default to none
-        :param castleChecks: custom starting values for whether kings and rooks have moved
-        :param epCoord: en passant position when starting with a custom board
-        :param turnColor: turn to move (1=white, -1=black)
+        :param xSize: x-axis size of the board (number of columns)
+        :param ySize: y-axis size of the board (number of rows)
         """
-        if customPieces is not None:
-            self.board = np.array(
-                [np.fromiter((Piece(None, 0, moveList=[], blockList=[], captureList=[]) for j in range(8)), dtype=Piece)
-                 for i in range(8)])
-            colorDict = {'w': 1, 'b': -1}
-            for pieceStr in customPieces:
-                self.board[tuple(self.algebraToCoordinates(pieceStr[1:3]))] = Piece(pieceStr[0], colorDict[pieceStr[3]])
+        self.xSize = xSize
+        self.ySize = ySize
+        self.board: npt.NDArray[[Piece]] | None = None
+        self.turnColor = 1
+        self.castleChecks = {}
+        self.kingDict = {}
+        self.checkMoveDict = {}
+        self.epList = []
+        self.epCoord: npt.NDArray[int] | None = None
+        self.halfMoveNum = 0
+        self.fullMoveNum = 1
+        self.fenLog = []
+        self.algList = []
+        if customBoard is not None:
+            startFen = customBoard
         else:
-            endRow = np.array(['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'])
-            pawnRow = np.fromiter(('p' for _ in range(8)), dtype=np.dtype('U1'))
-            emptyRow = np.fromiter((None for _ in range(8)), dtype=type(None))
-            colorCol = np.array([1, 1, 0, 0, 0, 0, -1, -1])
-            typeBoard = np.array([endRow, pawnRow, emptyRow, emptyRow, emptyRow, emptyRow, pawnRow, endRow])
-            self.board = np.array(
-                [np.fromiter(
-                    (Piece(typeBoard[i, j], colorCol[i], moveList=[], blockList=[], captureList=[]) for j in range(8)),
-                    dtype=Piece) for i in range(8)])
-        if castleChecks is None:
-            self.castleChecks = {-1: [True for _ in range(3)], 1: [True for _ in range(3)]}
-        else:
-            self.castleChecks = castleChecks
+            startFen = ["rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", 'w', "KQkq", '-', '0', '1']
         self.singleSquareVectorDict = {
             'k': np.array([[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]),
             'n': np.array([[2, 1], [1, 2], [-1, 2], [-2, 1], [-2, -1], [-1, -2], [1, -2], [2, -1]]), 'q': None,
-            'b': None, 'r': None, 'p': None}
+            'b': None, 'r': None, 'p': None}  # TODO: add new pieces
         self.mutliSquareVectorDict = {'k': None, 'n': None, 'q': np.array(
             [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]),
                                       'b': np.array([[1, 1], [-1, 1], [-1, -1], [1, -1]]),
-                                      'r': np.array([[1, 0], [0, 1], [-1, 0], [0, -1]]), 'p': None}
+                                      'r': np.array([[1, 0], [0, 1], [-1, 0], [0, -1]]),
+                                      'p': None}  # TODO: add new pieces
         self.pList = [np.array((0, -1)), np.array((0, 1))]
-        self.xSize = 8
-        self.ySize = 8
-        self.kingDict = {}
-        self.checkMoveDict = {}
-        self.epCoord = epCoord
-        self.epList = []
-        self.turnColor = turnColor
-        self.drawTurn = 0
-        self.initMoves()
-        if customPieces is not None:
-            if self.inCheck(self.kingDict[self.turnColor].position, self.turnColor):
-                self.kingDict[self.turnColor].inCheck = True
-                self.enterCheckMode(self.turnColor)
-        self.algList = []
+        self.setFromFEN(startFen)
         if customStart is not None:
             for move in customStart:
                 startAlg = move[0:2]
@@ -107,7 +89,7 @@ class Board:
 
         retStr = "\033[0m  "
         for col in range(self.xSize):
-            retStr += "   " + chr(col + 65)
+            retStr += "   " + chr(col + 97)
         retStr += "\n\033[0m   ┌"
         for col in range(self.xSize - 1):
             retStr += "───┬"
@@ -130,8 +112,107 @@ class Board:
         retStr += "───┘"
         retStr += "\n\033[0m  "
         for col in range(self.xSize):
-            retStr += "   " + chr(col + 65)
+            retStr += "   " + chr(col + 97)
         return retStr
+
+    def toFEN(self) -> list[str]:
+        fenList = []
+        boardString = ""
+        for y in range(self.ySize - 1, -1, -1):
+            blankLen = 0
+            for x in range(self.xSize):
+                if self.colorAt((y, x)):
+                    if blankLen != 0:
+                        boardString += str(blankLen)
+                        blankLen = 0
+                    if self.colorAt((y, x)) == 1:
+                        boardString += self.typeAt((y, x)).upper()
+                    else:
+                        boardString += self.typeAt((y, x))
+                else:
+                    blankLen += 1
+            if blankLen != 0:
+                boardString += str(blankLen)
+            boardString += "/"
+        boardString.removesuffix("/")
+        fenList.append(boardString)
+        if self.turnColor == 1:
+            fenList.append('w')
+        else:
+            fenList.append('b')
+        castleString = ""
+        if self.castleChecks[1][2] and self.castleChecks[1][1]:
+            castleString += 'K'
+        if self.castleChecks[1][0] and self.castleChecks[1][1]:
+            castleString += 'Q'
+        if self.castleChecks[-1][2] and self.castleChecks[-1][1]:
+            castleString += 'k'
+        if self.castleChecks[-1][0] and self.castleChecks[-1][1]:
+            castleString += 'q'
+        if len(castleString) == 0:
+            fenList.append("-")
+        else:
+            fenList.append(castleString)
+        if self.epCoord is not None:
+            fenList.append(self.coordToAlgebra(self.epCoord))
+        else:
+            fenList.append("-")
+        fenList.append(str(self.halfMoveNum))
+        fenList.append(str(self.fullMoveNum))
+        return fenList
+
+    def setFromFEN(self, fen: list[str]) -> None:
+        self.board = np.array(
+            [np.fromiter((Piece(None, 0) for j in range(self.xSize)), dtype=Piece) for i in range(self.ySize)])
+        boardList = fen[0].split("/")
+        for y in range(self.ySize - 1, -1, -1):
+            x = 0
+            curBlankStr = ""
+            for c in boardList[self.ySize - y - 1]:
+                if c.isdigit():
+                    curBlankStr += c
+                else:
+                    if len(curBlankStr) != 0:
+                        x += int(curBlankStr)
+                        curBlankStr = ""
+                    if c.isupper():
+                        curColor = 1
+                    else:
+                        curColor = -1
+                    self.board[(y, x)] = Piece(c.lower(), curColor)
+                    x += 1
+        if fen[1] == 'w':
+            self.turnColor = 1
+        else:
+            self.turnColor = -1
+        self.castleChecks = {-1: [False for _ in range(3)], 1: [False for _ in range(3)]}
+        if 'K' in fen[2]:
+            self.castleChecks[1][2] = True
+            self.castleChecks[1][1] = True
+        if 'Q' in fen[2]:
+            self.castleChecks[1][0] = True
+            self.castleChecks[1][1] = True
+        if 'k' in fen[2]:
+            self.castleChecks[-1][2] = True
+            self.castleChecks[-1][1] = True
+        if 'q' in fen[2]:
+            self.castleChecks[-1][0] = True
+            self.castleChecks[-1][1] = True
+        self.kingDict = {}
+        self.checkMoveDict = {}
+        self.epList = []
+        if fen[3] != '-':
+            self.epCoord = self.algebraToCoordinates(fen[3])
+        else:
+            self.epCoord = None
+        self.halfMoveNum = int(fen[4])
+        self.fullMoveNum = int(fen[5])
+        self.fenLog = []
+        self.initMoves()
+        if self.inCheck(self.kingDict[self.turnColor].position, self.turnColor):
+            self.kingDict[self.turnColor].inCheck = True
+            self.enterCheckMode(self.turnColor)
+        self.algList = []
 
     def printBoard(self) -> None:
         """
@@ -214,8 +295,8 @@ class Board:
         :return: list of the sets of coordinates of all pieces that can move to the given set of coordinates
         """
         squareList = []
-        for i in range(8):
-            for j in range(8):
+        for i in range(self.xSize):
+            for j in range(self.ySize):
                 if arrayInList(coord, self.board[(j, i)].moveList):
                     squareList.append(np.array((j, i)))
         return squareList
@@ -308,8 +389,8 @@ class Board:
         :return: list of the sets of coordinates of all pieces that are blocked at the given set of coordinates
         """
         squareList = []
-        for i in range(8):
-            for j in range(8):
+        for i in range(self.xSize):
+            for j in range(self.ySize):
                 if arrayInList(coord, self.board[(j, i)].blockList):
                     squareList.append(np.array((j, i)))
         return squareList
@@ -402,8 +483,8 @@ class Board:
         :return: list of the sets of coordinates of all pieces that have a capture at the given set of coordinates
         """
         squareList = []
-        for i in range(8):
-            for j in range(8):
+        for i in range(self.xSize):
+            for j in range(self.ySize):
                 if arrayInList(coord, self.board[(j, i)].captureList):
                     squareList.append(np.array((j, i)))
         return squareList
@@ -464,7 +545,7 @@ class Board:
         self.clearEP()
         self.epCoord = ep
         for v in self.pList:
-            if self.xSize > ep[1] + v[1] >= 0 == self.typeAt((ep[0] + color, ep[1] + v[1])) and self.colorAt(
+            if self.xSize > ep[1] + v[1] >= 0 and self.typeAt((ep[0] + color, ep[1] + v[1])) == 'p' and self.colorAt(
                     (ep[0] + color, ep[1] + v[1])) * color == -1 and self.colorAt(ep) == 0:
                 self.addCaptureAt((ep[0] + color, ep[1] + v[1]), ep)
                 self.epList.append(np.array((ep[0] + color, ep[1] + v[1])))
@@ -581,8 +662,8 @@ class Board:
         initializes the moveLists, blockLists, and captureLists
         :return:
         """
-        for y in range(8):
-            for x in range(8):
+        for y in range(self.ySize):
+            for x in range(self.xSize):
                 self.generateListsAt((y, x))
         if self.epCoord is not None:
             self.setEP(self.epCoord, self.turnColor * -1)
@@ -800,8 +881,8 @@ class Board:
         """
         kingCoord = self.kingDict[color].position
         self.checkMoveDict.clear()
-        for y in range(8):
-            for x in range(8):
+        for y in range(self.ySize):
+            for x in range(self.xSize):
                 if self.colorAt((y, x)) == color:
                     if self.typeAt((y, x)) == 'k':
                         optionList = []
@@ -968,8 +1049,8 @@ class Board:
         pieceList = []
         if self.kingDict[self.turnColor].inCheck:
             return [np.array(coord) for coord in list(self.checkMoveDict.keys())]
-        for y in range(8):
-            for x in range(8):
+        for y in range(self.ySize):
+            for x in range(self.xSize):
                 color = self.colorAt((y, x))
                 if color == self.turnColor:
                     coord = np.array((y, x))
@@ -986,8 +1067,8 @@ class Board:
         nonKingColor = 0
         nonKingType = None
         secondBishop = None
-        for y in range(8):
-            for x in range(8):
+        for y in range(self.ySize):
+            for x in range(self.xSize):
                 curType = self.typeAt((y, x))
                 curColor = self.colorAt((y, x))
                 if curType is not None:
@@ -1002,6 +1083,21 @@ class Board:
                         return False
         return True
 
+    def nRepetitions(self, n: int) -> bool:
+        """
+        checks if any board state has repeated at least n times
+        :return:
+        """
+        if len(self.fenLog) == 0:
+            return False
+        else:
+            fenLogShort = tuple(tuple(fen[0:4]) for fen in self.fenLog)
+            fenCounter = Counter(fenLogShort)
+            if fenCounter.most_common(1)[0][1] >= n:
+                return True
+            else:
+                return False
+
     def updateMoves(self, startCoord: npt.NDArray[int], endCoord: npt.NDArray[int], promotionType: str = None) -> None:
         """
         moves a piece from one location to another and updates all lists
@@ -1013,9 +1109,9 @@ class Board:
         pieceType = self.typeAt(startCoord)
         color = self.colorAt(startCoord)
         if pieceType == 'p' or color * self.colorAt(endCoord) == -1:
-            self.drawTurn = 0
+            self.halfMoveNum = 0
         else:
-            self.drawTurn += 1
+            self.halfMoveNum += 1
         if pieceType == 'k' and abs(endCoord[1] - startCoord[1]) == 2:
             self.castleChecks[color][1] = False
             if endCoord[1] == 2:
@@ -1059,12 +1155,15 @@ class Board:
             self.kingDict[i].inCheck = self.inCheck(self.kingDict[i].position, i)
             if self.kingDict[i].inCheck:
                 self.enterCheckMode(i)
+        if self.turnColor == -1:
+            self.fullMoveNum += 1
         self.turnColor *= -1
         self.algList.append(self.coordToAlgebra(startCoord) + self.coordToAlgebra(endCoord) + str(promotionType or ""))
+        self.fenLog.append(self.toFEN())
 
     def printStatus(self, printMoves: bool = True, printBlocks: bool = True, printCaptures: bool = True):
-        for y in range(8):
-            for x in range(8):
+        for y in range(self.ySize):
+            for x in range(self.xSize):
                 print(str(self.coordToAlgebra((y, x))) + ": " + str(self.typeAt((y, x))) + " " + str(
                     self.colorAt((y, x))))
                 if printMoves:
@@ -1084,7 +1183,7 @@ class Board:
             return None
         else:
             row = int(algebra[1]) - 1
-            col = ord(algebra[0].upper()) - 65
+            col = ord(algebra[0].lower()) - 97
             if 0 <= row < self.ySize and 0 <= col < self.xSize:
                 retNP = np.array((row, col))
                 return retNP
@@ -1099,7 +1198,7 @@ class Board:
         """
         if 0 <= coord[0] < self.ySize and 0 <= coord[1] < self.xSize:
             row = str(coord[0] + 1)
-            col = chr(coord[1] + 65)
+            col = chr(coord[1] + 97)
             return col + row
         else:
             return None
@@ -1112,9 +1211,12 @@ class Board:
         """
         retList = []
         for coord in coordList:
-            row = str(coord[0] + 1)
-            col = chr(coord[1] + 65)
-            retList.append(col + row)
+            if 0 <= coord[0] < self.ySize and 0 <= coord[1] < self.xSize:
+                row = str(coord[0] + 1)
+                col = chr(coord[1] + 97)
+                retList.append(col + row)
+            else:
+                return None
         if len(retList) != 0:
             return retList
         else:

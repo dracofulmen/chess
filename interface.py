@@ -4,8 +4,7 @@ import numpy as np
 import numpy.typing as npt
 
 colorDict = {-1: "Black", 1: "White"}
-# board = Board(customStart=['D2D4', 'D7D5', 'E2E4', 'D5E4', 'F2F4', 'E4F3']) # ep test
-# board = Board(customPieces=['ra1w', 'ke1w', 'rh1w', 'qe7b', 'ra8b', 'ke8b', 'rh8b']) # check test
+# board = Board(customStart=['d2d4', 'd7d5', 'e2e4', 'd5e4', 'f2f4']) # ep test
 board = Board()
 
 
@@ -29,7 +28,7 @@ def renderBoard():
     cancelOptions = ["x", "cancel", "none", "no", "back"]
     while invalidChoice:
         validMoveList = board.coordListToAlgebra(board.pieceCanMoveList())
-        if not validMoveList or board.drawTurn == 100:
+        if not validMoveList or board.halfMoveNum == 100 or board.nRepetitions(3):
             raise errors.GameOver(0)
         invalidStart = True
         while invalidStart:

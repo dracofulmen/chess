@@ -28,7 +28,7 @@ def renderBoard():
     promotionList = ['r', 'b', 'q', 'n', 'rook', 'bishop', 'queen', 'knight']
     cancelOptions = ["x", "cancel", "none", "no", "back"]
     while invalidChoice:
-        validMoveList = coordListToAlgebra(board.pieceCanMoveList())
+        validMoveList = board.coordListToAlgebra(board.pieceCanMoveList())
         if not validMoveList or board.drawTurn == 100:
             raise errors.GameOver(0)
         invalidStart = True
@@ -38,12 +38,12 @@ def renderBoard():
                 if startAlg == "?":
                     print(str(validMoveList))
                 elif len(startAlg) == 2 or len(startAlg) == 3:
-                    startCoord = algebraToCoordinates(startAlg[0:2])
+                    startCoord = board.algebraToCoordinates(startAlg[0:2])
                     if board.pieceCanMove(startCoord):
                         match len(startAlg):
                             case 3:
                                 if startAlg[2] == "?":
-                                    print(str(coordListToAlgebra(board.validMoveOptions(startCoord))))
+                                    print(str(board.coordListToAlgebra(board.validMoveOptions(startCoord))))
                                 else:
                                     raise errors.InvalidSyntax
                             case 2:
@@ -60,11 +60,11 @@ def renderBoard():
                 "\033[0mWhich square would you like to move the piece to? (type ? for move options or x to cancel)\n").lower()
             try:
                 if endAlg == "?":
-                    print(str(coordListToAlgebra(board.validMoveOptions(startCoord))))
+                    print(str(board.coordListToAlgebra(board.validMoveOptions(startCoord))))
                 elif endAlg in cancelOptions:
                     invalidEnd = False
                 elif len(endAlg) == 2:
-                    endCoord = algebraToCoordinates(endAlg[0:2])
+                    endCoord = board.algebraToCoordinates(endAlg[0:2])
                     if board.moveIsValid(startCoord, endCoord):
                         if endCoord[0] == 3.5 + 3.5 * board.turnColor and board.typeAt(startCoord) == 'p':
                             invalidPromotion = True

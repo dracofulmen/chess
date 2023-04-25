@@ -8,7 +8,7 @@ class Piece:
                  captureList: list = None):
         """
         init
-        :param pieceType: p=pawn, r=rook, n=knight, b=bishop, k=king, q=queen
+        :param pieceType: p=pawn, r=rook, n=knight, b=bishop, k=king, q=queen (for variants:
         :param color: 1=white, -1=black, 0=none
         :param moveList: custom move list; defaults to None
         :param blockList: custom block list; defaults to None

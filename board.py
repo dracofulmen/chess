@@ -6,13 +6,7 @@ import errors
 import numpy as np
 import numpy.typing as npt
 
-"""     
-    TODO: add draws
-        stalemate: no legal moves but not in check (DONE)
-        dead position: neither player can checkmate the other by any legal series of moves (how to do with pawns?) (DONE for insufficient material but not pawns) 
-        threefold repetition: (oh god no. i am not keeping track of every single board layout in the whole game.)
-        fifty-move rule: fifty moves pass with no captures or pawn movements (DONE)
-    
+"""         
     all edge cases appear to work
     
     notations to implement:
@@ -31,7 +25,6 @@ import numpy.typing as npt
         4-player? https://www.chess.com/terms/4-player-chess 
         torpedo https://www.chess.com/terms/torpedo-chess
         xxl? (new piece, bigger board) https://www.chess.com/terms/xxl-chess
-
 """
 
 
@@ -55,7 +48,7 @@ class Board:
                  for i in range(8)])
             colorDict = {'w': 1, 'b': -1}
             for pieceStr in customPieces:
-                self.board[tuple(algebraToCoordinates(pieceStr[1:3]))] = Piece(pieceStr[0], colorDict[pieceStr[3]])
+                self.board[tuple(self.algebraToCoordinates(pieceStr[1:3]))] = Piece(pieceStr[0], colorDict[pieceStr[3]])
         else:
             endRow = np.array(['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'])
             pawnRow = np.fromiter(('p' for _ in range(8)), dtype=np.dtype('U1'))
@@ -79,6 +72,8 @@ class Board:
                                       'b': np.array([[1, 1], [-1, 1], [-1, -1], [1, -1]]),
                                       'r': np.array([[1, 0], [0, 1], [-1, 0], [0, -1]]), 'p': None}
         self.pList = [np.array((0, -1)), np.array((0, 1))]
+        self.xSize = 8
+        self.ySize = 8
         self.kingDict = {}
         self.checkMoveDict = {}
         self.epCoord = epCoord
@@ -95,8 +90,8 @@ class Board:
             for move in customStart:
                 startAlg = move[0:2]
                 endAlg = move[2:4]
-                startCoord = algebraToCoordinates(startAlg)
-                endCoord = algebraToCoordinates(endAlg)
+                startCoord = self.algebraToCoordinates(startAlg)
+                endCoord = self.algebraToCoordinates(endAlg)
                 if len(move) == 5:
                     promo = move[4]
                 else:
@@ -455,8 +450,8 @@ class Board:
         self.clearEP()
         self.epCoord = ep
         for v in self.pList:
-            if (0 <= ep[1] + v[1] <= 7) and self.colorAt((ep[0] + color, ep[1] + v[1])) * color == -1 and self.typeAt(
-                    (ep[0] + color, ep[1] + v[1])) == 'p' and self.colorAt(ep) == 0:
+            if self.xSize > ep[1] + v[1] >= 0 == self.typeAt((ep[0] + color, ep[1] + v[1])) and self.colorAt(
+                    (ep[0] + color, ep[1] + v[1])) * color == -1 and self.colorAt(ep) == 0:
                 self.addCaptureAt((ep[0] + color, ep[1] + v[1]), ep)
                 self.epList.append(np.array((ep[0] + color, ep[1] + v[1])))
 
@@ -497,14 +492,14 @@ class Board:
         :return:
         """
         curPos = startCoord + dirVector
-        while (0 <= curPos[0] <= 7) and (0 <= curPos[1] <= 7) and (
+        while 0 <= curPos[0] < self.ySize and 0 <= curPos[1] < self.xSize and (
                 not self.colorAt(curPos) or (skipCoord is not None and np.array_equal(curPos, skipCoord))) and (
                 stopCoord is None or not np.array_equal(curPos, stopCoord)):
             if squareFunc is not None:
                 squareFunc(*args, curPos.copy(), **kwargs)
             curPos += dirVector
         else:
-            if (0 <= curPos[0] <= 7) and (0 <= curPos[1] <= 7):
+            if 0 <= curPos[0] < self.ySize and 0 <= curPos[1] < self.xSize:
                 return curPos
             else:
                 return None
@@ -537,7 +532,7 @@ class Board:
             else:
                 blockList.append(np.array([y + color, x]))
             for i in [-1, 1]:
-                if (0 <= x + i <= 7) and self.colorAt((y + color, x + i)) * color == -1:
+                if 0 <= x + i < self.xSize and self.colorAt((y + color, x + i)) * color == -1:
                     captureList.append(np.array([y + color, x + i]))
         elif curType is not None:
             if curType == 'k':
@@ -546,7 +541,7 @@ class Board:
             if self.singleSquareVectorDict[curType] is not None:
                 for v in self.singleSquareVectorDict[curType]:
                     curPos = arrayCoord + v
-                    if (0 <= curPos[0] <= 7) and (0 <= curPos[1] <= 7):
+                    if 0 <= curPos[0] < self.ySize and 0 <= curPos[1] < self.xSize:
                         match color * self.colorAt(curPos):
                             case 1:
                                 blockList.append(curPos)
@@ -594,7 +589,7 @@ class Board:
                 for square in updateList:
                     curType = self.typeAt(square)
                     curColor = self.colorAt(square)
-                    dirVec = vector(square, coord)
+                    dirVec = self.vector(square, coord)
                     match curType:
                         case 'p':
                             self.removeMoveAt(square, coord)
@@ -636,7 +631,7 @@ class Board:
                         self.addBlockAt(square, coord)
         for i in [-1, 1]:
             pawnPos = (coord[0] + color, coord[1] + i)
-            if 0 <= pawnPos[0] <= 7 and 0 <= pawnPos[1] + i <= 7 and self.colorAt(
+            if 0 <= pawnPos[0] < self.ySize and 0 <= pawnPos[1] + i < self.xSize and self.colorAt(
                     pawnPos) * color == -1 and self.typeAt(pawnPos) == 'p':
                 self.addCaptureAt(pawnPos, coord)
         self.generateListsAt(coord)
@@ -655,7 +650,7 @@ class Board:
         for square in updateList:
             curType = self.typeAt(square)
             curColor = self.colorAt(square)
-            dirVec = vector(square, coord)
+            dirVec = self.vector(square, coord)
             match curType:
                 case 'p':
                     if square[0] != coord[0]:
@@ -742,7 +737,7 @@ class Board:
                                     square[0] == startCoord[0] and (
                                             self.typeAt(square) == 'r' or self.typeAt(square) == 'q')]
             for square in epDoubleExposureList:
-                dirVec = vector(square, startCoord)
+                dirVec = self.vector(square, startCoord)
                 startPos = np.array((startCoord[0], endCoord[1] + (
                         np.sign(dirVec[0][1]) * (endCoord[1] - startCoord[1]) * 0.5 - 0.5) * np.sign(dirVec[0][1])))
                 endPos = self.iterateUntilNextOccupiedSquare(startPos, dirVec[0], None)
@@ -752,7 +747,7 @@ class Board:
             for square in epExposureList:
                 curType = self.typeAt(square)
                 if curType == 'r' or curType == 'b' or curType == 'q':
-                    dirVec = vector(square, epCapCoord)
+                    dirVec = self.vector(square, epCapCoord)
                     endPos = self.iterateUntilNextOccupiedSquare(square, dirVec[0], None, skipCoord=epCapCoord,
                                                                  stopCoord=endCoord)
                     if np.array_equal(endPos, kingCoord):
@@ -761,7 +756,7 @@ class Board:
         for square in exposureList:
             curType = self.typeAt(square)
             if curType == 'r' or curType == 'b' or curType == 'q':
-                dirVec = vector(square, startCoord)
+                dirVec = self.vector(square, startCoord)
                 endPos = self.iterateUntilNextOccupiedSquare(square, dirVec[0], None, skipCoord=startCoord,
                                                              stopCoord=endCoord)
                 if np.array_equal(endPos, kingCoord):
@@ -775,7 +770,7 @@ class Board:
             for square in threatenList:
                 curType = self.typeAt(square)
                 if curType == 'r' or curType == 'b' or curType == 'q':
-                    dirVec = vector(square, kingCoord)
+                    dirVec = self.vector(square, kingCoord)
                     endPos = self.iterateUntilNextOccupiedSquare(square, dirVec[0], None, stopCoord=endCoord)
                     if np.array_equal(endPos, kingCoord):
                         return True
@@ -799,9 +794,9 @@ class Board:
                         blockList = self.blocksAt(kingCoord)
                         for v in self.singleSquareVectorDict['k']:
                             curPos = kingCoord + v
-                            if (0 <= curPos[0] <= 7) and (0 <= curPos[1] <= 7) and not self.inCheck(curPos,
-                                                                                                    color) and not arrayInList(
-                                curPos, blockList):
+                            if 0 <= curPos[0] < self.ySize and 0 <= curPos[1] < self.xSize and not self.inCheck(curPos,
+                                                                                                                color) and not arrayInList(
+                                    curPos, blockList):
                                 optionList.append(curPos)
                         if len(optionList) != 0:
                             self.checkMoveDict[tuple(kingCoord)] = optionList
@@ -826,7 +821,7 @@ class Board:
         color = self.colorAt(coord)
         if color != self.turnColor:
             raise errors.InvalidMoveWrongColor
-        elif not (0 <= coord[0] <= 7) or not (0 <= coord[1] <= 7):
+        elif not 0 <= coord[0] < self.ySize or not 0 <= coord[1] < self.xSize:
             raise errors.InvalidMoveOffBoard
         elif self.kingDict[color].inCheck:
             if tuple(coord) in self.checkMoveDict.keys():
@@ -850,8 +845,8 @@ class Board:
         color = self.colorAt(startCoord)
         if color != self.turnColor:
             raise errors.InvalidMoveWrongColor
-        elif not (0 <= startCoord[0] <= 7) or not (0 <= startCoord[1] <= 7) or not (0 <= endCoord[0] <= 7) or not (
-                0 <= endCoord[1] <= 7):
+        elif not 0 <= startCoord[0] < self.ySize or not 0 <= startCoord[1] < self.xSize or not 0 <= endCoord[
+            0] < self.ySize or not 0 <= endCoord[1] < self.xSize:
             raise errors.InvalidMoveOffBoard
         elif self.colorAt(endCoord) * color == 1:
             raise errors.InvalidMoveBlocked
@@ -866,7 +861,7 @@ class Board:
         elif self.exposesKing(startCoord, endCoord, self.kingDict[color].position, color):
             raise errors.InvalidMoveIntoCheck
         elif pieceType == 'k':
-            if abs(vector(startCoord, endCoord)[1]) == 2 and startCoord[1] == 4 and startCoord[
+            if abs(self.vector(startCoord, endCoord)[1]) == 2 and startCoord[1] == 4 and startCoord[
                 0] == 3.5 - 3.5 * color and self.castleChecks[color][1]:  # castling
                 row = int(3.5 - 3.5 * color)
                 match endCoord[1]:
@@ -922,7 +917,7 @@ class Board:
             elif self.exposesKing(coord, square, self.kingDict[color].position, color):
                 pass
             elif pieceType == 'k':
-                if abs(vector(coord, square)[1]) == 2 and coord[1] == 4 and coord[0] == 3.5 - 3.5 * color and \
+                if abs(self.vector(coord, square)[1]) == 2 and coord[1] == 4 and coord[0] == 3.5 - 3.5 * color and \
                         self.castleChecks[color][1]:  # castling
                     row = int(3.5 - 3.5 * color)
                     match square[1]:
@@ -1051,12 +1046,13 @@ class Board:
             if self.kingDict[i].inCheck:
                 self.enterCheckMode(i)
         self.turnColor *= -1
-        self.algList.append(coordToAlgebra(startCoord) + coordToAlgebra(endCoord) + str(promotionType or ""))
+        self.algList.append(self.coordToAlgebra(startCoord) + self.coordToAlgebra(endCoord) + str(promotionType or ""))
 
     def printStatus(self, printMoves: bool = True, printBlocks: bool = True, printCaptures: bool = True):
         for y in range(8):
             for x in range(8):
-                print(str(coordToAlgebra((y, x))) + ": " + str(self.typeAt((y, x))) + " " + str(self.colorAt((y, x))))
+                print(str(self.coordToAlgebra((y, x))) + ": " + str(self.typeAt((y, x))) + " " + str(
+                    self.colorAt((y, x))))
                 if printMoves:
                     print("Moves: " + str(self.movesAt((y, x))))
                 if printBlocks:
@@ -1064,76 +1060,73 @@ class Board:
                 if printCaptures:
                     print("Captures: " + str(self.capturesAt((y, x))))
 
-
-def algebraToCoordinates(algebra: str) -> npt.NDArray[int] | None:
-    """
-    converts algebraic notation into a set of coordinates
-    :param algebra: algebraic notation to be converted into a set of coordinates (e.g. A1 -> [0,0], A8 -> [0,7], H8 -> [7,7])
-    :return: set of coordinates
-    """
-    if len(algebra) != 2:
-        return None
-    else:
-        row = int(algebra[1]) - 1
-        col = ord(algebra[0].upper()) - 65
-        if (0 <= row <= 7) and (0 <= col <= 7):
-            retNP = np.array((row, col))
-            return retNP
+    def algebraToCoordinates(self, algebra: str) -> npt.NDArray[int] | None:
+        """
+        converts algebraic notation into a set of coordinates
+        :param algebra: algebraic notation to be converted into a set of coordinates (e.g. A1 -> [0,0], A8 -> [0,7], H8 -> [7,7])
+        :return: set of coordinates
+        """
+        if len(algebra) != 2:
+            return None
         else:
-            raise errors.InvalidSyntax
+            row = int(algebra[1]) - 1
+            col = ord(algebra[0].upper()) - 65
+            if 0 <= row < self.ySize and 0 <= col < self.xSize:
+                retNP = np.array((row, col))
+                return retNP
+            else:
+                raise errors.InvalidSyntax
 
-
-def coordToAlgebra(coord: npt.NDArray[int] | tuple) -> str | None:
-    """
-    converts a set of coordinates into algebraic notation
-    :param coord: set of coordinates to be converted into algebraic notation (e.g. [0,0] -> A1, [7,7] -> H8)
-    :return: algebraic notation
-    """
-    if (0 <= coord[0] <= 7) and (0 <= coord[1] <= 7):
-        row = str(coord[0] + 1)
-        col = chr(coord[1] + 65)
-        return col + row
-    else:
-        return None
-
-
-def coordListToAlgebra(coordList: list[npt.NDArray[int]] | list[tuple]) -> list[str] | None:
-    """
-    converts a list of sets of coordinates into algebraic notation
-    :param coordList: set of coordinates to be converted into algebraic notation (e.g. [0,0] -> A1, [7,7] -> H8)
-    :return: algebraic notation
-    """
-    retList = []
-    for coord in coordList:
-        row = str(coord[0] + 1)
-        col = chr(coord[1] + 65)
-        retList.append(col + row)
-    if len(retList) != 0:
-        return retList
-    else:
-        return None
-
-
-def vector(coord0: npt.NDArray[int], coord1: npt.NDArray[int]) -> tuple[npt.NDArray[int], int] | None:
-    """
-    converts the direction between a piece at a given set of coordinates and that at another given set of coordinates into a direction vector
-    :param coord0: set of coordinates of the first piece
-    :param coord1: set of coordinates of the second piece
-    :return: direction vector
-    """
-    if (0 <= coord0[0] <= 7) and (0 <= coord0[1] <= 7) and (0 <= coord1[0] <= 7) and (0 <= coord1[1] <= 7):
-        diffVector = coord1 - coord0
-        absTotal = abs(diffVector[0]) + abs(diffVector[1])
-        if absTotal == 3 and diffVector[0] != 0 and diffVector[1] != 0:
-            return diffVector, 1
-        elif abs(diffVector[0]) == abs(diffVector[1]):
-            return (diffVector / (absTotal / 2)).astype(int), int(absTotal / 2)
-        elif absTotal == abs(diffVector[0]) or absTotal == abs(diffVector[1]):
-            return (diffVector / absTotal).astype(int), absTotal
+    def coordToAlgebra(self, coord: npt.NDArray[int] | tuple) -> str | None:
+        """
+        converts a set of coordinates into algebraic notation
+        :param coord: set of coordinates to be converted into algebraic notation (e.g. [0,0] -> A1, [7,7] -> H8)
+        :return: algebraic notation
+        """
+        if 0 <= coord[0] < self.ySize and 0 <= coord[1] < self.xSize:
+            row = str(coord[0] + 1)
+            col = chr(coord[1] + 65)
+            return col + row
         else:
             return None
-    else:
-        return None
+
+    def coordListToAlgebra(self, coordList: list[npt.NDArray[int]] | list[tuple]) -> list[str] | None:
+        """
+        converts a list of sets of coordinates into algebraic notation
+        :param coordList: set of coordinates to be converted into algebraic notation (e.g. [0,0] -> A1, [7,7] -> H8)
+        :return: algebraic notation
+        """
+        retList = []
+        for coord in coordList:
+            row = str(coord[0] + 1)
+            col = chr(coord[1] + 65)
+            retList.append(col + row)
+        if len(retList) != 0:
+            return retList
+        else:
+            return None
+
+    def vector(self, coord0: npt.NDArray[int], coord1: npt.NDArray[int]) -> tuple[npt.NDArray[int], int] | None:
+        """
+        converts the direction between a piece at a given set of coordinates and that at another given set of coordinates into a direction vector
+        :param coord0: set of coordinates of the first piece
+        :param coord1: set of coordinates of the second piece
+        :return: direction vector
+        """
+        if 0 <= coord0[0] < self.ySize and 0 <= coord0[1] < self.xSize and 0 <= coord1[0] < self.ySize and 0 <= coord1[
+            1] < self.xSize:
+            diffVector = coord1 - coord0
+            absTotal = abs(diffVector[0]) + abs(diffVector[1])
+            if absTotal == 3 and diffVector[0] != 0 and diffVector[1] != 0:
+                return diffVector, 1
+            elif abs(diffVector[0]) == abs(diffVector[1]):
+                return (diffVector / (absTotal / 2)).astype(int), int(absTotal / 2)
+            elif absTotal == abs(diffVector[0]) or absTotal == abs(diffVector[1]):
+                return (diffVector / absTotal).astype(int), absTotal
+            else:
+                return None
+        else:
+            return None
 
 
 def arrayInList(arr: npt.NDArray[Any], lst: list[npt.NDArray[Any]]) -> bool:

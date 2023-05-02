@@ -7,77 +7,193 @@ import numpy as np
 import numpy.typing as npt
 from collections import Counter
 
-"""         
-    all edge cases appear to work
-    
-    notations to implement:
-        FEN for custom board https://www.chess.com/terms/fen-chess (can use for threefold repetition rule as well)
-    
-    chess variants to add (use inheritance?):
-        giveaway https://www.chess.com/terms/giveaway-chess
-        atomic https://www.chess.com/terms/atomic-chess
-        960 https://www.chess.com/terms/chess960
-        3-check https://www.chess.com/terms/3-check-chess
+"""             
+    chess variants to add (use inheritance):
+        giveaway https://www.chess.com/terms/giveaway-chess (no castle, no check, king is not royal, promotionOptions = ['r', 'b', 'q', 'n', 'k'], custom win condition)
+        atomic? https://www.chess.com/terms/atomic-chess
+        960 https://www.chess.com/terms/chess960 (see https://en.wikipedia.org/wiki/Fischer_random_chess#Creating_starting_positions for generation algorithm)
+        3-check? (new UI elements) https://www.chess.com/terms/3-check-chess
         crazyhouse? (new UI elements) https://www.chess.com/terms/crazyhouse-chess
-        duck? (new piece) https://www.chess.com/terms/duck-chess
-        gothic? (new piece, bigger board) https://www.chess.com/terms/gothic-chess
+        duck (new piece, new interface prompts) https://www.chess.com/terms/duck-chess (no check, stalemateWinnerMult=1) 
+        gothic (new piece, 10x8 board) https://www.chess.com/terms/gothic-chess
         horde? https://www.chess.com/terms/horde-chess
-        no castling https://www.chess.com/terms/no-castling-chess
-        4-player? https://www.chess.com/terms/4-player-chess 
-        torpedo https://www.chess.com/terms/torpedo-chess
-        xxl? (new piece, bigger board) https://www.chess.com/terms/xxl-chess
+        no castling https://www.chess.com/terms/no-castling-chess (no castling)
+        4-player? https://www.chess.com/terms/4-player-chess
+        torpedo https://www.chess.com/terms/torpedo-chess (different pawn movement)
+        xxl (new piece, bigger board) https://www.chess.com/terms/xxl-chess (no ep)
+    chess variant (normal, ?giveaway, ?atomic, ?960, ?3-check, ?crazyhouse, ?duck, ?gothic, ?horde, ?no castling, ?xxl) REMOVE QUESTION MARK FOR A VARIANT WHEN IT IS FULLY IMPLEMENTED
 """
 
 
 # TODO: big things: rewrite without numpy
 
 class Board:
-    def __init__(self, customBoard: list[str] = None, customStart: list[str] = None, xSize: int = 8, ySize: int = 8):
+    @staticmethod
+    def defaultStart() -> list[str]:
+        """
+        starting board layout
+        :return:
+        """
+        return ["rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", 'w', "KQkq", '-', '0', '1']
+
+    @property
+    def xSize(self) -> int:
+        """
+        x-axis size of the board (number of columns/files)
+        :return:
+        """
+        return 8
+
+    @property
+    def ySize(self) -> int:
+        """
+        y-axis size of the board (number of rows/ranks)
+        :return:
+        """
+        return 8
+
+    def nthRowForColor(self, n: int, color: int) -> int:
+        """
+        finds the nth row for a given color (0-indexed)
+        :param n: row number
+        :param color: color to start from the side of
+        :return:
+        """
+        return int((self.ySize - 1) / 2 - color * (self.ySize - 1 - 2 * n) / 2)
+
+    @property
+    def singleSquareVectorDict(self) -> dict[str, list[npt.NDArray[int]] | None]:
+        """
+        dictionary of single square moves for each piece
+        :return:
+        """
+        return {'k': [np.array([1, 0]), np.array([1, 1]), np.array([0, 1]), np.array([-1, 1]), np.array([-1, 0]),
+                      np.array([-1, -1]), np.array([0, -1]), np.array([1, -1])],
+                'n': [np.array([2, 1]), np.array([1, 2]), np.array([-1, 2]), np.array([-2, 1]), np.array([-2, -1]),
+                      np.array([-1, -2]), np.array([1, -2]), np.array([2, -1])], 'q': None, 'b': None, 'r': None,
+                'p': None}
+
+    @property
+    def multiSquareVectorDict(self) -> dict[str, list[npt.NDArray[int]] | None]:
+        """
+        dictionary of multiple square move directions for each piece
+        :return:
+        """
+        return {'k': None, 'n': None,
+                'q': [np.array([1, 0]), np.array([1, 1]), np.array([0, 1]), np.array([-1, 1]), np.array([-1, 0]),
+                      np.array([-1, -1]), np.array([0, -1]), np.array([1, -1])],
+                'b': [np.array([1, 1]), np.array([-1, 1]), np.array([-1, -1]), np.array([1, -1])],
+                'r': [np.array([1, 0]), np.array([0, 1]), np.array([-1, 0]), np.array([0, -1])], 'p': None}
+
+    @property
+    def startCastlingLocationDict(self) -> dict[int, npt.NDArray | None]:
+        """
+        dictionary for rook and king initial locations (order is queen side rook, king, king side rook)
+        :return:
+        """
+        return {-1: np.array([[7, 0], [7, 4], [7, 7]]), 1: np.array([[0, 0], [0, 4], [0, 7]])}
+
+    @property
+    def promotionRow(self) -> int:
+        """
+        int specifying the row number that promotions happen at (from white's perspective)
+        :return:
+        """
+        return 7
+
+    @property
+    def promotionTypes(self) -> list[str]:
+        """
+        types of pieces that can be promoted to
+        :return:
+        """
+        return ['r', 'b', 'q', 'n']
+
+    @property
+    def promotionNames(self) -> list[str]:
+        """
+        full names of types of pieces that can be promoted to
+        :return:
+        """
+        return ['rook', 'bishop', 'queen', 'knight']
+
+    @staticmethod
+    def promotionNameToType(name: str) -> str | None:
+        """
+        converts the full name of a piece that can be promoted to to its type
+        :param name: full name of the piece
+        :return:
+        """
+        promotionType = name[0]
+        if promotionType == 'k':
+            promotionType = 'n'
+        return promotionType
+
+    @property
+    def usesCheck(self) -> bool:
+        """
+        bool specifying whether check is used
+        :return:
+        """
+        return True
+
+    @property
+    def usesCastling(self) -> bool:
+        """
+        bool specifying whether castling is used
+        :return:
+        """
+        return True
+
+    @property
+    def usesEPAtAll(self) -> bool:
+        """
+        bool specifying whether en passant is used
+        :return:
+        """
+        return True
+
+    @property
+    def kingIsRoyal(self) -> bool:
+        """
+        bool specifying whether the king's capture ends the game
+        :return:
+        """
+        return True
+
+    @property
+    def stalemateWinnerMult(self) -> int:
+        """
+        int specifying who wins in case of a stalemate (0 for draw, 1 for player who is about to move, -1 for player who just moved)
+        :return:
+        """
+        return 0
+
+    def variantGameWinCondition(self) -> int | None:
+        pass
+
+    def __init__(self, customBoard: list[str] = None, customStart: list[str] = None):
         """
         initializes the board
         :param customBoard: custom board in FEN format (list of strings)
         :param customStart: list of starting moves; will default to none
-        :param xSize: x-axis size of the board (number of columns)
-        :param ySize: y-axis size of the board (number of rows)
         """
-        self.xSize = xSize
-        self.ySize = ySize
+        self.turnColor, self.castleChecks, self.kingDict, self.checkMoveDict, self.epList, self.halfMoveNum, self.fullMoveNum, self.fenLog, self.algList = 1, {}, {}, {}, [], 0, 1, [], []
         self.board: npt.NDArray[[Piece]] | None = None
-        self.turnColor = 1
-        self.castleChecks = {}
-        self.kingDict = {}
-        self.checkMoveDict = {}
-        self.epList = []
         self.epCoord: npt.NDArray[int] | None = None
-        self.halfMoveNum = 0
-        self.fullMoveNum = 1
-        self.fenLog = []
-        self.algList = []
-        if customBoard is not None:
-            startFen = customBoard
-        else:
-            startFen = ["rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", 'w', "KQkq", '-', '0', '1']
-        self.singleSquareVectorDict = {
-            'k': np.array([[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]),
-            'n': np.array([[2, 1], [1, 2], [-1, 2], [-2, 1], [-2, -1], [-1, -2], [1, -2], [2, -1]]), 'q': None,
-            'b': None, 'r': None, 'p': None}  # TODO: add new pieces
-        self.mutliSquareVectorDict = {'k': None, 'n': None, 'q': np.array(
-            [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]),
-                                      'b': np.array([[1, 1], [-1, 1], [-1, -1], [1, -1]]),
-                                      'r': np.array([[1, 0], [0, 1], [-1, 0], [0, -1]]),
-                                      'p': None}  # TODO: add new pieces
+        startFen = customBoard if customBoard is not None else self.defaultStart()
         self.pList = [np.array((0, -1)), np.array((0, 1))]
         self.setFromFEN(startFen)
         if customStart is not None:
             for move in customStart:
-                startAlg = move[0:2]
-                endAlg = move[2:4]
+                endStrPos = 1
+                while move[endStrPos].isdigit():
+                    endStrPos += 1
+                startAlg = move[0:endStrPos]
+                promo = move[-1] if move[-1].isalpha() else None
+                endAlg = move[endStrPos:] if promo is None else move[endStrPos:-1]
                 startCoord = self.algebraToCoordinates(startAlg)
                 endCoord = self.algebraToCoordinates(endAlg)
-                if len(move) == 5:
-                    promo = move[4]
-                else:
-                    promo = None
                 if self.moveIsValid(startCoord, endCoord):
                     self.updateMoves(startCoord, endCoord, promotionType=promo)
 
@@ -125,10 +241,7 @@ class Board:
                     if blankLen != 0:
                         boardString += str(blankLen)
                         blankLen = 0
-                    if self.colorAt((y, x)) == 1:
-                        boardString += self.typeAt((y, x)).upper()
-                    else:
-                        boardString += self.typeAt((y, x))
+                    boardString += self.typeAt((y, x)).upper() if self.colorAt((y, x)) == 1 else self.typeAt((y, x))
                 else:
                     blankLen += 1
             if blankLen != 0:
@@ -136,10 +249,7 @@ class Board:
             boardString += "/"
         boardString.removesuffix("/")
         fenList.append(boardString)
-        if self.turnColor == 1:
-            fenList.append('w')
-        else:
-            fenList.append('b')
+        fenList.append('w') if self.turnColor == 1 else fenList.append('b')
         castleString = ""
         if self.castleChecks[1][2] and self.castleChecks[1][1]:
             castleString += 'K'
@@ -149,14 +259,8 @@ class Board:
             castleString += 'k'
         if self.castleChecks[-1][0] and self.castleChecks[-1][1]:
             castleString += 'q'
-        if len(castleString) == 0:
-            fenList.append("-")
-        else:
-            fenList.append(castleString)
-        if self.epCoord is not None:
-            fenList.append(self.coordToAlgebra(self.epCoord))
-        else:
-            fenList.append("-")
+        fenList.append("-") if len(castleString) == 0 else fenList.append(castleString)
+        fenList.append(self.coordToAlgebra(self.epCoord)) if self.epCoord is not None else fenList.append("-")
         fenList.append(str(self.halfMoveNum))
         fenList.append(str(self.fullMoveNum))
         return fenList
@@ -175,16 +279,10 @@ class Board:
                     if len(curBlankStr) != 0:
                         x += int(curBlankStr)
                         curBlankStr = ""
-                    if c.isupper():
-                        curColor = 1
-                    else:
-                        curColor = -1
+                    curColor = 1 if c.isupper() else -1
                     self.board[(y, x)] = Piece(c.lower(), curColor)
                     x += 1
-        if fen[1] == 'w':
-            self.turnColor = 1
-        else:
-            self.turnColor = -1
+        self.turnColor = 1 if fen[1] == 'w' else -1
         self.castleChecks = {-1: [False for _ in range(3)], 1: [False for _ in range(3)]}
         if 'K' in fen[2]:
             self.castleChecks[1][2] = True
@@ -201,15 +299,12 @@ class Board:
         self.kingDict = {}
         self.checkMoveDict = {}
         self.epList = []
-        if fen[3] != '-':
-            self.epCoord = self.algebraToCoordinates(fen[3])
-        else:
-            self.epCoord = None
+        self.epCoord = self.algebraToCoordinates(fen[3]) if fen[3] != '-' else None
         self.halfMoveNum = int(fen[4])
         self.fullMoveNum = int(fen[5])
         self.fenLog = []
         self.initMoves()
-        if self.inCheck(self.kingDict[self.turnColor].position, self.turnColor):
+        if self.usesCheck and self.inCheck(self.kingDict[self.turnColor].position, self.turnColor):
             self.kingDict[self.turnColor].inCheck = True
             self.enterCheckMode(self.turnColor)
         self.algList = []
@@ -268,10 +363,7 @@ class Board:
         :param move: set of coordinates to check if the piece can move to
         :return: bool
         """
-        if arrayInList(move, self.board[tuple(coord)].moveList):
-            return True
-        else:
-            return False
+        return True if arrayInList(move, self.board[tuple(coord)].moveList) else False
 
     def canMoveToBools(self, coord: npt.NDArray[int] | tuple, moves: list[npt.NDArray[int]]) -> list[bool]:
         """
@@ -282,10 +374,7 @@ class Board:
         """
         retList = []
         for move in moves:
-            if arrayInList(move, self.board[tuple(coord)].moveList):
-                retList.append(True)
-            else:
-                retList.append(False)
+            retList.append(True) if arrayInList(move, self.board[tuple(coord)].moveList) else retList.append(False)
         return retList
 
     def canMoveList(self, coord: npt.NDArray[int] | tuple) -> list[npt.NDArray[int]]:
@@ -362,10 +451,7 @@ class Board:
         :param block: set of coordinates to check if the piece is blocked at
         :return: bool
         """
-        if arrayInList(block, self.board[tuple(coord)].blockList):
-            return True
-        else:
-            return False
+        return True if arrayInList(block, self.board[tuple(coord)].blockList) else False
 
     def blockedAtBools(self, coord: npt.NDArray[int] | tuple, blocks: list[npt.NDArray[int]]) -> list[bool]:
         """
@@ -376,10 +462,7 @@ class Board:
         """
         retList = []
         for block in blocks:
-            if arrayInList(block, self.board[tuple(coord)].blockList):
-                retList.append(True)
-            else:
-                retList.append(False)
+            retList.append(True) if arrayInList(block, self.board[tuple(coord)].blockList) else retList.append(False)
         return retList
 
     def blockedAtList(self, coord: npt.NDArray[int] | tuple) -> list[npt.NDArray[int]]:
@@ -456,10 +539,7 @@ class Board:
         :param capture: set of coordinates to check if the piece has a capture
         :return: bool
         """
-        if arrayInList(capture, self.board[tuple(coord)].captureList):
-            return True
-        else:
-            return False
+        return True if arrayInList(capture, self.board[tuple(coord)].captureList) else False
 
     def capturedAtBools(self, coord: npt.NDArray[int] | tuple, captures: list[npt.NDArray[int]]) -> list[bool]:
         """
@@ -470,10 +550,8 @@ class Board:
         """
         retList = []
         for capture in captures:
-            if arrayInList(capture, self.board[tuple(coord)].captureList):
-                retList.append(True)
-            else:
-                retList.append(False)
+            retList.append(True) if arrayInList(capture, self.board[tuple(coord)].captureList) else retList.append(
+                False)
         return retList
 
     def capturedList(self, coord: npt.NDArray[int] | tuple) -> list[npt.NDArray[int]]:
@@ -569,14 +647,14 @@ class Board:
         :param endCoord: end coordinates of the move
         :return:
         """
-        if self.epCoord is not None and arrayInList(startCoord, self.epList) and np.array_equal(self.epCoord, endCoord):
-            return True
-        else:
-            return False
+        return True if self.usesEPAtAll and self.epCoord is not None and arrayInList(startCoord,
+                                                                                     self.epList) and np.array_equal(
+            self.epCoord, endCoord) else False
 
     def iterateUntilNextOccupiedSquare(self, startCoord: npt.NDArray[int], dirVector: npt.NDArray[int],
                                        squareFunc: Optional[Callable], *args, skipCoord: npt.NDArray[int] = None,
-                                       stopCoord: npt.NDArray[int] = None, **kwargs) -> npt.NDArray[int] | None:
+                                       stopCoord: npt.NDArray[int] = None, stopForCheckColor: int = 0, **kwargs) -> \
+            npt.NDArray[int] | None:
         """
         iterates over the board from a starting square in a direction until it hits an occupied square, calling a function on all squares in the middle, and returns the occupied square
         :param startCoord: square to start from (exclusive)
@@ -584,75 +662,83 @@ class Board:
         :param squareFunc: function to call on squares in the middle
         :param skipCoord: optional coordinate to ignore color at
         :param stopCoord: optional coordinate to stop at if reached
+        :param stopForCheckColor: int for whether to stop if square is in check and color to use
         :return:
         """
         curPos = startCoord + dirVector
         while 0 <= curPos[0] < self.ySize and 0 <= curPos[1] < self.xSize and (
                 not self.colorAt(curPos) or (skipCoord is not None and np.array_equal(curPos, skipCoord))) and (
-                stopCoord is None or not np.array_equal(curPos, stopCoord)):
+                stopCoord is None or not np.array_equal(curPos, stopCoord)) and not (
+                stopForCheckColor and self.inCheck(curPos, stopForCheckColor)):
             if squareFunc is not None:
                 squareFunc(*args, curPos.copy(), **kwargs)
             curPos += dirVector
         else:
-            if 0 <= curPos[0] < self.ySize and 0 <= curPos[1] < self.xSize:
-                return curPos
-            else:
-                return None
+            return curPos if 0 <= curPos[0] < self.ySize and 0 <= curPos[1] < self.xSize else None
+
+    def pawnCanDoubleMove(self, coord: npt.NDArray[int] | tuple) -> bool:
+        """
+        checks if a pawn at a given set of coordinates can make a double move
+        :param coord: coordinates of the pawn to check if it can double move
+        :return:
+        """
+        return True if coord[0] == self.nthRowForColor(1, self.colorAt(coord)) else False
+
+    def generatePawnListAt(self, coord: npt.NDArray[int] | tuple) -> None:
+        """
+        generates the moveList, blockList, and captureList at a given set of coordinates of a pawn
+        :param coord: coordinates of the pawn whose lists will be generated
+        :return:
+        """
+        moveList = []
+        blockList = []
+        captureList = []
+        color = self.colorAt(coord)
+        y: int = coord[0]
+        x: int = coord[1]
+        if not self.colorAt((y + color, x)):
+            moveList.append(np.array([y + color, x]))
+            if self.pawnCanDoubleMove(coord):
+                blockList.append(np.array([y + 2 * color, x])) if self.colorAt((y + 2 * color, x)) else moveList.append(
+                    np.array([y + 2 * color, x]))
+        else:
+            blockList.append(np.array([y + color, x]))
+        for i in [-1, 1]:
+            if 0 <= x + i < self.xSize and self.colorAt((y + color, x + i)) * color == -1:
+                captureList.append(np.array([y + color, x + i]))
+        self.addMovesAt(coord, moveList)
+        self.addBlocksAt(coord, blockList)
+        self.addCapturesAt(coord, captureList)
 
     def generateListsAt(self, coord: npt.NDArray[int] | tuple) -> None:
         """
         generates the moveList, blockList, and captureList at a given set of coordinates
         :param coord: coordinates of the piece whose lists will be generated
-        :return: None
+        :return:
         """
         moveList = []
         blockList = []
         captureList = []
         curType = self.typeAt(coord)
         color = self.colorAt(coord)
-        y: int = coord[0]
-        x: int = coord[1]
-        if type(coord) == tuple:
-            arrayCoord = np.array(coord)
-        else:
-            arrayCoord = coord
+        arrayCoord = np.array(coord) if type(coord) == tuple else coord
         if curType == 'p':
-            if not self.colorAt((y + color, x)):
-                moveList.append(np.array([y + color, x]))
-                if y == 3.5 - 2.5 * color:
-                    if self.colorAt((y + 2 * color, x)):
-                        blockList.append(np.array([y + 2 * color, x]))
-                    else:
-                        moveList.append(np.array([y + 2 * color, x]))
-            else:
-                blockList.append(np.array([y + color, x]))
-            for i in [-1, 1]:
-                if 0 <= x + i < self.xSize and self.colorAt((y + color, x + i)) * color == -1:
-                    captureList.append(np.array([y + color, x + i]))
+            self.generatePawnListAt(coord)
         elif curType is not None:
-            if curType == 'k':
+            if curType == 'k' and self.usesCheck:
                 inCheck = self.inCheck(coord, color)
                 self.kingDict[self.colorAt(coord)] = King(inCheck, arrayCoord)
             if self.singleSquareVectorDict[curType] is not None:
                 for v in self.singleSquareVectorDict[curType]:
                     curPos = arrayCoord + v
                     if 0 <= curPos[0] < self.ySize and 0 <= curPos[1] < self.xSize:
-                        match color * self.colorAt(curPos):
-                            case 1:
-                                blockList.append(curPos)
-                            case 0:
-                                moveList.append(curPos)
-                            case -1:
-                                captureList.append(curPos)
-            if self.mutliSquareVectorDict[curType] is not None:
-                for v in self.mutliSquareVectorDict[curType]:
+                        blockList.append(curPos) if color * self.colorAt(curPos) == 1 else captureList.append(
+                            curPos) if color * self.colorAt(curPos) == -1 else moveList.append(curPos)
+            if self.multiSquareVectorDict[curType] is not None:
+                for v in self.multiSquareVectorDict[curType]:
                     endPos = self.iterateUntilNextOccupiedSquare(arrayCoord, v, moveList.append)
                     if endPos is not None:
-                        match self.colorAt(endPos) * color:
-                            case 1:
-                                blockList.append(endPos)
-                            case -1:
-                                captureList.append(endPos)
+                        blockList.append(endPos) if self.colorAt(endPos) * color == 1 else captureList.append(endPos)
         self.addMovesAt(coord, moveList)
         self.addBlocksAt(coord, blockList)
         self.addCapturesAt(coord, captureList)
@@ -667,6 +753,10 @@ class Board:
                 self.generateListsAt((y, x))
         if self.epCoord is not None:
             self.setEP(self.epCoord, self.turnColor * -1)
+        if self.usesCastling:
+            for color in [-1, 1]:
+                self.addMovesAt(self.startCastlingLocationDict[color][1],
+                                self.validCastleOptions(color, useCheck=False))
 
     def addPieceAt(self, coord: npt.NDArray[int], pieceType: str, color: int) -> None:
         """
@@ -677,6 +767,11 @@ class Board:
         :return:
         """
         oldColor = self.colorAt(coord)
+        if self.usesCastling and (coord[0] == 0 or coord[0] == self.ySize - 1) and oldColor == 0:
+            castleColor = 1 if coord[0] == 0 else -1
+            if self.castleChecks[castleColor][1]:
+                self.removeMovesAt(self.startCastlingLocationDict[color][1],
+                                   self.validCastleOptions(color, useCheck=False))
         self.board[tuple(coord)] = Piece(pieceType, color)
         match oldColor:
             case 0:
@@ -685,34 +780,25 @@ class Board:
                     curType = self.typeAt(square)
                     curColor = self.colorAt(square)
                     dirVec = self.vector(square, coord)
-                    match curType:
-                        case 'p':
-                            self.removeMoveAt(square, coord)
-                            self.addBlockAt(square, coord)
-                            curPos = dirVec[0] + coord
-                            if self.canMoveTo(square, curPos):
-                                self.removeMoveAt(square, curPos)
-                        case 'r' | 'b' | 'q':
-                            self.removeMoveAt(square, coord)
-                            match curColor * color:
-                                case 1:
-                                    self.addBlockAt(square, coord)
-                                case -1:
-                                    self.addCaptureAt(square, coord)
+                    if curType == 'p':
+                        self.removeMoveAt(square, coord)
+                        self.addBlockAt(square, coord)
+                        curPos = dirVec[0] + coord
+                        if self.canMoveTo(square, curPos):
+                            self.removeMoveAt(square, curPos)
+                    elif curType is not None:
+                        self.removeMoveAt(square, coord)
+                        self.addBlockAt(square, coord) if curColor * color == 1 else self.addCaptureAt(square, coord)
+                        if self.multiSquareVectorDict[curType] is not None:
                             endPos = self.iterateUntilNextOccupiedSquare(coord, dirVec[0], self.removeMoveAt, square)
                             if endPos is not None:
-                                match self.colorAt(endPos) * color:
-                                    case 1:
-                                        self.removeBlockAt(square, endPos)
-                                    case -1:
-                                        self.removeCaptureAt(square, endPos)
-                        case 'n' | 'k':
-                            self.removeMoveAt(square, coord)
-                            match curColor * color:
-                                case 1:
-                                    self.addBlockAt(square, coord)
-                                case -1:
-                                    self.addCaptureAt(square, coord)
+                                self.removeBlockAt(square, endPos) if self.colorAt(
+                                    endPos) * color == 1 else self.removeCaptureAt(square, endPos)
+                if self.usesCastling and (coord[0] == 0 or coord[0] == self.ySize - 1):
+                    castleColor = 1 if coord[0] == 0 else -1
+                    if self.castleChecks[castleColor][1]:
+                        self.addMovesAt(self.startCastlingLocationDict[color][1],
+                                        self.validCastleOptions(color, useCheck=False))
             case -1 | 1:
                 updateBlockList = self.blockedAtList(coord)
                 updateCaptureList = self.capturedList(coord)
@@ -730,7 +816,7 @@ class Board:
                     pawnPos) * color == -1 and self.typeAt(pawnPos) == 'p':
                 self.addCaptureAt(pawnPos, coord)
         self.generateListsAt(coord)
-        if pieceType == 'k':
+        if pieceType == 'k' and self.usesCheck:
             self.kingDict[color].position = coord
 
     def removePieceAt(self, coord: npt.NDArray[int]) -> None:
@@ -741,49 +827,46 @@ class Board:
         """
         color = self.colorAt(coord)
         updateList = self.blockedAtList(coord) + self.capturedList(coord)
+        if self.usesCastling and arrayInList(coord, self.startCastlingLocationDict[color]) and (
+                self.typeAt(coord) == 'r' or self.typeAt(coord) == 'k'):
+            self.castleChecks[color][indexOfArrayInList(coord, self.startCastlingLocationDict[color])] = False
+        if self.typeAt(coord) == 'k' and self.kingIsRoyal:
+            errors.GameOver(color * -1)
+        if self.usesCastling and (coord[0] == 0 or coord[0] == self.ySize - 1):
+            castleColor = 1 if coord[0] == 0 else -1
+            if self.castleChecks[castleColor][1]:
+                self.removeMovesAt(self.startCastlingLocationDict[color][1],
+                                   self.validCastleOptions(color, useCheck=False))
         self.board[tuple(coord)] = Piece(None, 0)
+        if self.usesCastling and (coord[0] == 0 or coord[0] == self.ySize - 1):
+            castleColor = 1 if coord[0] == 0 else -1
+            if self.castleChecks[castleColor][1]:
+                self.addMovesAt(self.startCastlingLocationDict[color][1],
+                                self.validCastleOptions(color, useCheck=False))
         for square in updateList:
             curType = self.typeAt(square)
             curColor = self.colorAt(square)
             dirVec = self.vector(square, coord)
-            match curType:
-                case 'p':
-                    if square[0] != coord[0]:
-                        match square[1] - coord[1]:
-                            case 0:
-                                self.removeBlockAt(square, coord)
-                                self.addMoveAt(square, coord)
-                            case 1 | -1:
-                                self.removeCaptureAt(square, coord)
-                        if square[0] == 3.5 - 2.5 * color and coord[0] == 3.5 - 1.5 * color:
-                            curPos = dirVec[0] + coord
-                            match color * self.colorAt(curPos):
-                                case 1 | -1:
-                                    self.addBlockAt(square, curPos)
-                                case 0:
-                                    self.addMoveAt(square, curPos)
-                case 'r' | 'b' | 'q':
-                    self.addMoveAt(square, coord)
-                    match curColor * color:
-                        case 1:
+            if curType == 'p':
+                if square[0] != coord[0]:
+                    match square[1] - coord[1]:
+                        case 0:
                             self.removeBlockAt(square, coord)
-                        case -1:
+                            self.addMoveAt(square, coord)
+                            if self.pawnCanDoubleMove(square) and coord[0] == square[0] + color:
+                                curPos = dirVec[0] + coord
+                                self.addMoveAt(square, curPos) if color * self.colorAt(
+                                    curPos) == 0 else self.addBlockAt(square, curPos)
+                        case 1 | -1:
                             self.removeCaptureAt(square, coord)
+            elif curType is not None:
+                self.addMoveAt(square, coord)
+                self.removeBlockAt(square, coord) if curColor * color == 1 else self.removeCaptureAt(square, coord)
+                if self.multiSquareVectorDict[curType] is not None:
                     endPos = self.iterateUntilNextOccupiedSquare(coord, dirVec[0], self.addMoveAt, square)
                     if endPos is not None:
-                        match self.colorAt(endPos) * color:
-                            case 1:
-                                self.addBlockAt(square, endPos)
-                            case -1:
-                                self.addCaptureAt(square, endPos)
-                case 'n' | 'k':
-                    self.addMoveAt(square, coord)
-                    match curColor * color:
-                        case 1:
-                            self.removeBlockAt(square, coord)
-                        case -1:
-                            self.removeCaptureAt(square, coord)
-        self.generateListsAt(coord)
+                        self.addBlockAt(square, endPos) if self.colorAt(endPos) * color == 1 else self.addCaptureAt(
+                            square, endPos)
 
     def threatenListAt(self, coord: npt.NDArray[int] | tuple, color: int) -> list[npt.NDArray[int]]:
         """
@@ -829,8 +912,9 @@ class Board:
             epExposureList = self.blockedAtList(epCapCoord) + self.capturedList(epCapCoord)
             epExposureList = [square for square in epExposureList if self.colorAt(square) * color == -1]
             epDoubleExposureList = [square for square in epExposureList + exposureList if
-                                    square[0] == startCoord[0] and (
-                                            self.typeAt(square) == 'r' or self.typeAt(square) == 'q')]
+                                    square[0] == startCoord[0] and arrayInList(self.pList[0],
+                                                                               self.multiSquareVectorDict[
+                                                                                   self.typeAt(square)])]
             for square in epDoubleExposureList:
                 dirVec = self.vector(square, startCoord)
                 startPos = np.array((startCoord[0], endCoord[1] + (
@@ -841,7 +925,7 @@ class Board:
             epExposureList = [square for square in epExposureList if not arrayInList(square, epDoubleExposureList)]
             for square in epExposureList:
                 curType = self.typeAt(square)
-                if curType == 'r' or curType == 'b' or curType == 'q':
+                if self.multiSquareVectorDict[curType] is not None:
                     dirVec = self.vector(square, epCapCoord)
                     endPos = self.iterateUntilNextOccupiedSquare(square, dirVec[0], None, skipCoord=epCapCoord,
                                                                  stopCoord=endCoord)
@@ -850,7 +934,7 @@ class Board:
             exposureList = [square for square in exposureList if not arrayInList(square, epDoubleExposureList)]
         for square in exposureList:
             curType = self.typeAt(square)
-            if curType == 'r' or curType == 'b' or curType == 'q':
+            if self.multiSquareVectorDict[curType] is not None:
                 dirVec = self.vector(square, startCoord)
                 endPos = self.iterateUntilNextOccupiedSquare(square, dirVec[0], None, skipCoord=startCoord,
                                                              stopCoord=endCoord)
@@ -864,7 +948,7 @@ class Board:
         else:
             for square in threatenList:
                 curType = self.typeAt(square)
-                if curType == 'r' or curType == 'b' or curType == 'q':
+                if self.multiSquareVectorDict[curType] is not None:
                     dirVec = self.vector(square, kingCoord)
                     endPos = self.iterateUntilNextOccupiedSquare(square, dirVec[0], None, stopCoord=endCoord)
                     if np.array_equal(endPos, kingCoord):
@@ -918,7 +1002,7 @@ class Board:
             raise errors.InvalidMoveWrongColor
         elif not 0 <= coord[0] < self.ySize or not 0 <= coord[1] < self.xSize:
             raise errors.InvalidMoveOffBoard
-        elif self.kingDict[color].inCheck:
+        elif self.usesCheck and self.kingDict[color].inCheck:
             if tuple(coord) in self.checkMoveDict.keys():
                 return True
             else:
@@ -928,6 +1012,49 @@ class Board:
             return True
         else:
             raise errors.PieceCantMove
+
+    def validCastleOptions(self, color: int, useCheck: bool = None) -> list[npt.NDArray[int]]:
+        """
+        returns a list of moves that are valid and perform a castle
+        :param color: color of the pieces to check
+        :param useCheck: bool for if to care about check (defaults to self.usesCheck)
+        :return:
+        """
+        if useCheck is None:
+            useCheck = self.usesCheck
+        kingStartCoord = self.startCastlingLocationDict[color][1]
+        retList = []
+        if useCheck and self.inCheck(kingStartCoord, color):
+            return retList
+        if self.castleChecks[color][1] and self.castleChecks[color][0]:
+            kv = np.array([0, -1])
+            kingEndCoord = np.array([self.nthRowForColor(0, color), 2])
+            rookStartCoord = self.startCastlingLocationDict[color][0]
+            curCoord = self.iterateUntilNextOccupiedSquare(kingStartCoord, kv, None, skipCoord=rookStartCoord,
+                                                           stopCoord=kingEndCoord,
+                                                           stopForCheckColor=color if useCheck else 0)
+            if np.array_equal(curCoord, kingEndCoord) and not (useCheck and self.inCheck(curCoord, color)):
+                rv = np.array([0, 1])
+                rookEndCoord = np.array([self.nthRowForColor(0, color), 3])
+                curCoord = self.iterateUntilNextOccupiedSquare(rookStartCoord, rv, None, skipCoord=kingStartCoord,
+                                                               stopCoord=rookEndCoord)
+                if np.array_equal(curCoord, rookEndCoord):
+                    retList.append(kingEndCoord)
+        if self.castleChecks[color][1] and self.castleChecks[color][2]:
+            kv = np.array([0, 1])
+            kingEndCoord = np.array([self.nthRowForColor(0, color), self.xSize - 2])
+            rookStartCoord = self.startCastlingLocationDict[color][2]
+            curCoord = self.iterateUntilNextOccupiedSquare(kingStartCoord, kv, None, skipCoord=rookStartCoord,
+                                                           stopCoord=kingEndCoord,
+                                                           stopForCheckColor=color if useCheck else 0)
+            if np.array_equal(curCoord, kingEndCoord) and not (useCheck and self.inCheck(curCoord, color)):
+                rv = np.array([0, -1])
+                rookEndCoord = np.array([self.nthRowForColor(0, color), self.xSize - 3])
+                curCoord = self.iterateUntilNextOccupiedSquare(rookStartCoord, rv, None, skipCoord=kingStartCoord,
+                                                               stopCoord=rookEndCoord)
+                if np.array_equal(curCoord, rookEndCoord):
+                    retList.append(kingEndCoord)
+        return retList
 
     def moveIsValid(self, startCoord: npt.NDArray[int], endCoord: npt.NDArray[int]) -> bool:
         """
@@ -945,7 +1072,7 @@ class Board:
             raise errors.InvalidMoveOffBoard
         elif self.colorAt(endCoord) * color == 1:
             raise errors.InvalidMoveBlocked
-        elif self.kingDict[color].inCheck:
+        elif self.usesCheck and self.kingDict[color].inCheck:
             if tuple(startCoord) in self.checkMoveDict.keys():
                 if arrayInList(endCoord, self.checkMoveDict[tuple(startCoord)]):
                     return True
@@ -953,37 +1080,17 @@ class Board:
                     raise errors.InvalidMoveCheck
             else:
                 raise errors.InvalidMoveCheck
-        elif self.exposesKing(startCoord, endCoord, self.kingDict[color].position, color):
+        elif self.usesCheck and self.exposesKing(startCoord, endCoord, self.kingDict[color].position, color):
             raise errors.InvalidMoveIntoCheck
         elif pieceType == 'k':
-            if abs(self.vector(startCoord, endCoord)[1]) == 2 and startCoord[1] == 4 and startCoord[
-                0] == 3.5 - 3.5 * color and self.castleChecks[color][1]:  # castling
-                row = int(3.5 - 3.5 * color)
-                match endCoord[1]:
-                    case 2:
-                        if self.castleChecks[color][0] and self.typeAt((row, 0)) == 'r' and self.colorAt(
-                                (row, 0)) == color and not self.typeAt((row, 3)) and not self.typeAt(
-                            (row, 2)) and not self.typeAt((row, 1)) and not self.inCheck((row, 3),
-                                                                                         color) and not self.inCheck(
-                            (row, 2), color):
-                            return True
-                        else:
-                            raise errors.InvalidMoveCastle
-                    case 6:
-                        if self.castleChecks[color][2] and self.typeAt((row, 7)) == 'r' and self.colorAt(
-                                (row, 7)) == color and not self.typeAt((row, 5)) and not self.typeAt(
-                            (row, 6)) and not self.inCheck((row, 5), color) and not self.inCheck((row, 6), color):
-                            return True
-                        else:
-                            raise errors.InvalidMoveCastle
-                    case _:
-                        raise errors.InvalidMoveGeneric
-            elif not self.inCheck(endCoord, color) and (
+            if self.usesCastling and arrayInList(endCoord, self.validCastleOptions(color)):
+                return True
+            elif not (self.usesCheck and self.inCheck(endCoord, color)) and (
                     self.canMoveTo(startCoord, endCoord) or self.capturedAt(startCoord, endCoord)):
                 return True
             else:
                 raise errors.InvalidMoveGeneric
-        elif pieceType == 'p' and self.usesEP(startCoord, endCoord):
+        elif pieceType == 'p' and self.usesEPAtAll and self.usesEP(startCoord, endCoord):
             return True
         elif self.canMoveTo(startCoord, endCoord) or self.capturedAt(startCoord, endCoord):
             return True
@@ -1004,35 +1111,18 @@ class Board:
         optionList = [square for square in optionList if self.colorAt(square) * color != 1]
         retList = []
         for square in optionList:
-            if self.kingDict[color].inCheck and tuple(coord) in self.checkMoveDict.keys() and arrayInList(square,
-                                                                                                          self.checkMoveDict[
-                                                                                                              tuple(
-                                                                                                                  coord)]):
+            if self.usesCheck and self.kingDict[color].inCheck and tuple(
+                    coord) in self.checkMoveDict.keys() and arrayInList(square, self.checkMoveDict[tuple(coord)]):
                 retList.append(square)
-            elif self.exposesKing(coord, square, self.kingDict[color].position, color):
+            elif self.usesCheck and self.exposesKing(coord, square, self.kingDict[color].position, color):
                 pass
             elif pieceType == 'k':
-                if abs(self.vector(coord, square)[1]) == 2 and coord[1] == 4 and coord[0] == 3.5 - 3.5 * color and \
-                        self.castleChecks[color][1]:  # castling
-                    row = int(3.5 - 3.5 * color)
-                    match square[1]:
-                        case 2:
-                            if self.castleChecks[color][0] and self.typeAt((row, 0)) == 'r' and self.colorAt(
-                                    (row, 0)) == color and not self.typeAt((row, 3)) and not self.typeAt(
-                                (row, 2)) and not self.typeAt((row, 1)) and not self.inCheck((row, 3),
-                                                                                             color) and not self.inCheck(
-                                (row, 2), color):
-                                retList.append(square)
-                        case 6:
-                            if self.castleChecks[color][2] and self.typeAt((row, 7)) == 'r' and self.colorAt(
-                                    (row, 7)) == color and not self.typeAt((row, 5)) and not self.typeAt(
-                                (row, 6)) and not self.inCheck((row, 5), color) and not self.inCheck((row, 6),
-                                                                                                     color):
-                                retList.append(square)
-                elif not self.inCheck(square, color) and (
+                if self.usesCastling and arrayInList(square, self.validCastleOptions(color)):
+                    retList.append(square)
+                elif not (self.usesCheck and self.inCheck(square, color)) and (
                         self.canMoveTo(coord, square) or self.capturedAt(coord, square)):
                     retList.append(square)
-            elif pieceType == 'p' and self.usesEP(coord, square):
+            elif pieceType == 'p' and self.usesEPAtAll and self.usesEP(coord, square):
                 retList.append(square)
             elif self.canMoveTo(coord, square) or self.capturedAt(coord, square):
                 retList.append(square)
@@ -1047,7 +1137,7 @@ class Board:
         :return:
         """
         pieceList = []
-        if self.kingDict[self.turnColor].inCheck:
+        if self.usesCheck and self.kingDict[self.turnColor].inCheck:
             return [np.array(coord) for coord in list(self.checkMoveDict.keys())]
         for y in range(self.ySize):
             for x in range(self.xSize):
@@ -1093,10 +1183,7 @@ class Board:
         else:
             fenLogShort = tuple(tuple(fen[0:4]) for fen in self.fenLog)
             fenCounter = Counter(fenLogShort)
-            if fenCounter.most_common(1)[0][1] >= n:
-                return True
-            else:
-                return False
+            return True if fenCounter.most_common(1)[0][1] >= n else False
 
     def updateMoves(self, startCoord: npt.NDArray[int], endCoord: npt.NDArray[int], promotionType: str = None) -> None:
         """
@@ -1112,51 +1199,36 @@ class Board:
             self.halfMoveNum = 0
         else:
             self.halfMoveNum += 1
-        if pieceType == 'k' and abs(endCoord[1] - startCoord[1]) == 2:
+        if pieceType == 'k' and arrayInList(endCoord, self.validCastleOptions(color)):
             self.castleChecks[color][1] = False
-            if endCoord[1] == 2:
-                self.castleChecks[color][0] = False
-                rookStartCoord = np.array([startCoord[0], 0])
-                rookEndCoord = np.array([startCoord[0], 3])
-            else:
-                self.castleChecks[color][2] = False
-                rookStartCoord = np.array([startCoord[0], 7])
-                rookEndCoord = np.array([startCoord[0], 5])
+            self.castleChecks[color][0 if endCoord[1] == 2 else 2] = False
+            rookStartCoord = np.array([startCoord[0], 0]) if endCoord[1] == 2 else np.array(
+                [startCoord[0], self.xSize - 1])
+            rookEndCoord = np.array([startCoord[0], 3]) if endCoord[1] == 2 else np.array(
+                [startCoord[0], self.xSize - 3])
             self.removePieceAt(rookStartCoord)
             self.addPieceAt(rookEndCoord, 'r', color)
-        elif pieceType == 'p' and self.usesEP(startCoord, endCoord):
-            self.removePieceAt(
-                np.array((self.epCoord[0] - color, self.epCoord[1])))
-        elif (pieceType == 'k' or pieceType == 'r') and 3.5 - 3.5 * color:
-            match startCoord[0]:
-                case 0:
-                    if self.castleChecks[color][0]:
-                        self.castleChecks[color][0] = False
-                case 4:
-                    if self.castleChecks[color][1]:
-                        self.castleChecks[color][1] = False
-                case 7:
-                    if self.castleChecks[color][2]:
-                        self.castleChecks[color][2] = False
+        elif pieceType == 'p' and self.usesEPAtAll and self.usesEP(startCoord, endCoord):
+            self.removePieceAt(np.array((self.epCoord[0] - color, self.epCoord[1])))
+        elif (pieceType == 'k' or pieceType == 'r') and self.nthRowForColor(0, color):
+            posList = [square[1] for square in self.startCastlingLocationDict[color]]
+            if startCoord[1] in posList:
+                self.castleChecks[color][posList.index(startCoord[1])] = False
         self.removePieceAt(startCoord)
-        if pieceType == 'p' and endCoord[0] == 3.5 + 3.5 * color:
-            if promotionType:
-                self.addPieceAt(endCoord, promotionType, color)
-            else:
-                self.addPieceAt(endCoord, 'q', color)
+        if pieceType == 'p' and endCoord[0] == self.nthRowForColor(0, color * -1):
+            self.addPieceAt(endCoord, promotionType, color) if promotionType else self.addPieceAt(endCoord, 'q', color)
         else:
             self.addPieceAt(endCoord, pieceType, color)
-        if pieceType == 'p' and startCoord[0] == 3.5 - 2.5 * color and endCoord[0] == 3.5 - 0.5 * color:
-            self.setEP((endCoord[0] - color, endCoord[1]), color)
-        else:
-            self.clearEP()
-        self.checkMoveDict.clear()
-        for i in [-1, 1]:
-            self.kingDict[i].inCheck = self.inCheck(self.kingDict[i].position, i)
-            if self.kingDict[i].inCheck:
-                self.enterCheckMode(i)
-        if self.turnColor == -1:
-            self.fullMoveNum += 1
+        self.setEP((endCoord[0] - color, endCoord[1]), color) if pieceType == 'p' and self.usesEPAtAll and (
+                endCoord[0] - startCoord[0]) * color == 2 else self.clearEP()
+        if self.usesCheck:
+            self.checkMoveDict.clear()
+            for i in [-1, 1]:
+                self.kingDict[i].inCheck = self.inCheck(self.kingDict[i].position, i)
+                if self.kingDict[i].inCheck:
+                    self.enterCheckMode(i)
+            if self.turnColor == -1:
+                self.fullMoveNum += 1
         self.turnColor *= -1
         self.algList.append(self.coordToAlgebra(startCoord) + self.coordToAlgebra(endCoord) + str(promotionType or ""))
         self.fenLog.append(self.toFEN())
@@ -1179,16 +1251,17 @@ class Board:
         :param algebra: algebraic notation to be converted into a set of coordinates (e.g. A1 -> [0,0], A8 -> [0,7], H8 -> [7,7])
         :return: set of coordinates
         """
-        if len(algebra) != 2:
+        if len(algebra) < 2:
             return None
-        else:
-            row = int(algebra[1]) - 1
-            col = ord(algebra[0].lower()) - 97
-            if 0 <= row < self.ySize and 0 <= col < self.xSize:
-                retNP = np.array((row, col))
-                return retNP
-            else:
-                raise errors.InvalidSyntax
+        col = ord(algebra[0].lower()) - 97
+        rowStr = algebra[1:]
+        if col < 0 or col > 25 or not rowStr.isdecimal():
+            raise errors.InvalidSyntax
+        row = int(rowStr) - 1
+        if 0 <= row < self.ySize and 0 <= col < self.xSize:
+            retNP = np.array((row, col))
+            return retNP
+        raise errors.InvalidSyntax
 
     def coordToAlgebra(self, coord: npt.NDArray[int] | tuple) -> str | None:
         """
@@ -1200,8 +1273,7 @@ class Board:
             row = str(coord[0] + 1)
             col = chr(coord[1] + 97)
             return col + row
-        else:
-            return None
+        return None
 
     def coordListToAlgebra(self, coordList: list[npt.NDArray[int]] | list[tuple]) -> list[str] | None:
         """
@@ -1217,10 +1289,7 @@ class Board:
                 retList.append(col + row)
             else:
                 return None
-        if len(retList) != 0:
-            return retList
-        else:
-            return None
+        return retList if len(retList) != 0 else None
 
     def vector(self, coord0: npt.NDArray[int], coord1: npt.NDArray[int]) -> tuple[npt.NDArray[int], int] | None:
         """
@@ -1233,16 +1302,11 @@ class Board:
             1] < self.xSize:
             diffVector = coord1 - coord0
             absTotal = abs(diffVector[0]) + abs(diffVector[1])
-            if absTotal == 3 and diffVector[0] != 0 and diffVector[1] != 0:
-                return diffVector, 1
-            elif abs(diffVector[0]) == abs(diffVector[1]):
-                return (diffVector / (absTotal / 2)).astype(int), int(absTotal / 2)
-            elif absTotal == abs(diffVector[0]) or absTotal == abs(diffVector[1]):
-                return (diffVector / absTotal).astype(int), absTotal
-            else:
-                return None
-        else:
-            return None
+            return diffVector, 1 if absTotal == 3 and diffVector[0] != 0 and diffVector[1] != 0 else (
+                (diffVector / (absTotal / 2)).astype(int), int(absTotal / 2)) if abs(diffVector[0]) == abs(
+                diffVector[1]) else ((diffVector / absTotal).astype(int), absTotal) if absTotal == abs(
+                diffVector[0]) or absTotal == abs(diffVector[1]) else None
+        return None
 
 
 def arrayInList(arr: npt.NDArray[Any], lst: list[npt.NDArray[Any]]) -> bool:
@@ -1252,10 +1316,22 @@ def arrayInList(arr: npt.NDArray[Any], lst: list[npt.NDArray[Any]]) -> bool:
     :param lst: list of arrays to check
     :return:
     """
+    return False if lst is None else any(np.array_equal(arr, elem) for elem in lst)
+
+
+def indexOfArrayInList(arr: npt.NDArray[Any], lst: list[npt.NDArray[Any]]) -> int | None:
+    """
+    finds the index of an array is in a list of arrays
+    :param arr: array to find the index of
+    :param lst: list of arrays to check
+    :return:
+    """
     if lst is None:
-        return False
-    else:
-        return any(np.array_equal(arr, elem) for elem in lst)
+        return None
+    for i in range(len(lst)):
+        if np.array_equal(arr, lst[i]):
+            return i
+    return None
 
 
 def removeArray(arr: npt.NDArray[Any], lst: list[npt.NDArray[Any]]) -> None:
@@ -1265,9 +1341,10 @@ def removeArray(arr: npt.NDArray[Any], lst: list[npt.NDArray[Any]]) -> None:
     :param lst: list of arrays to remove from
     :return:
     """
-    ind = 0
-    size = len(lst)
-    while ind != size and not np.array_equal(lst[ind], arr):
-        ind += 1
-    if ind != size:
-        lst.pop(ind)
+    if arrayInList(arr, lst):
+        ind = 0
+        size = len(lst)
+        while ind != size and not np.array_equal(lst[ind], arr):
+            ind += 1
+        if ind != size:
+            lst.pop(ind)

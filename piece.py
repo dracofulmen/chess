@@ -3,12 +3,21 @@ import numpy.typing as npt
 
 
 class Piece:
+    charDict = {'k1': '\u2654', 'q1': '\u2655', 'r1': '\u2656', 'b1': '\u2657', 'n1': '\u2658', 'p1': '\u2659',
+                'g1': '\u2664', 'z1': '\u2661', 'h1': '\u2662', 'e1': '\u2667', 'c1': '\u2616', 'k-1': '\u265a',
+                'q-1': '\u265b', 'r-1': '\u265c', 'b-1': '\u265d', 'n-1': '\u265e', 'p-1': '\u265f',
+                'g-1': '\u2660', 'z-1': '\u2665', 'h-1': '\u2666', 'e-1': '\u2663', 'c-1': '\u2617', 'd1': '\U0001F424',
+                'd-1': '\U0001F424', "None0": " "}
+    normalTypeList = ['k', 'q', 'r', 'b', 'n', 'p']
+    xxlTypeList = ['k', 'r', 'b', 'n', 'p', 'g', 'z', 'h', 'e', 'c']
+    gothicTypeList = ['k', 'q', 'r', 'b', 'n', 'p', 'h', 'e']
+    duckTypeList = ['k', 'q', 'r', 'b', 'n', 'p', 'd']
 
     def __init__(self, pieceType: str | None, color: int, moveList: list = None, blockList: list = None,
                  captureList: list = None):
         """
         init
-        :param pieceType: p=pawn, r=rook, n=knight, b=bishop, k=king, q=queen (for variants: g=general (king+knight), z=amazon (queen + knight), h=archbishop/hawk (knight + bishop), e=chancellor/elephant (knight + rook), c=camel (knight + 1))
+        :param pieceType: p=pawn, r=rook, n=knight, b=bishop, k=king, q=queen (for variants: g=general (king+knight), z=amazon (queen + knight), h=archbishop/hawk (knight + bishop), e=chancellor/elephant (knight + rook), c=camel (knight + 1)), d=duck
         :param color: 1=white, -1=black, 0=none
         :param moveList: custom move list; defaults to None
         :param blockList: custom block list; defaults to None
@@ -16,7 +25,6 @@ class Piece:
 
         """
         self.pieceType, self.color, self.moveList, self.blockList, self.captureList = pieceType, color, moveList, blockList, captureList
-
         if self.moveList is None:
             self.moveList = []
         if self.blockList is None:
@@ -32,23 +40,17 @@ class Piece:
         checks if the piece exists (if it has a type and a color)
         :return:
         """
-        if self.pieceType is not None and self.color != 0:
-            return True
-        else:
-            return False
+        return True if self.pieceType is not None and self.color != 0 else False
 
     def char(self) -> str:
         """
         gives the unicode character for the piece
         :return: unicode character for the piece or None if empty
         """
-        charDict = {'k1': '\u2654', 'q1': '\u2655', 'r1': '\u2656', 'b1': '\u2657', 'n1': '\u2658', 'p1': '\u2659',
-                    'g1': '\u2664', 'z1': '\u2661', 'h1': '\u2662', 'e1': '\u2667', 'c1': '\u2616', 'k-1': '\u265a',
-                    'q-1': '\u265b', 'r-1': '\u265c', 'b-1': '\u265d', 'n-1': '\u265e', 'p-1': '\u265f',
-                    'g-1': '\u2660', 'z-1': '\u2665', 'h-1': '\u2666', 'e-1': '\u2663', 'c-1': '\u2617', "None0": " "}
-        return charDict[str(self)]
+
+        return Piece.charDict[str(self)]
 
 
 class King:
-    def __init__(self, inCheck: bool, position: npt.NDArray):
+    def __init__(self, inCheck: bool, position: npt.NDArray | None):
         self.inCheck, self.position = inCheck, position

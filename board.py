@@ -21,7 +21,7 @@ from collections import Counter
         4-player? https://www.chess.com/terms/4-player-chess
         torpedo https://www.chess.com/terms/torpedo-chess (different pawn movement)
         xxl (new piece, bigger board) https://www.chess.com/terms/xxl-chess (no ep)
-    chess variant (normal, ?giveaway, ?atomic, ?960, ?3-check, ?crazyhouse, ?duck, ?gothic, ?horde, ?no castling, ?xxl) REMOVE QUESTION MARK FOR A VARIANT WHEN IT IS FULLY IMPLEMENTED
+    chess variant (normal, ?giveaway, ?atomic, !960, ?3-check, ?crazyhouse, ?duck, ?gothic, ?horde, ?no castling, ?xxl) REMOVE QUESTION MARK FOR A VARIANT WHEN IT IS FULLY IMPLEMENTED
 """
 
 
@@ -1206,8 +1206,7 @@ class Board:
         if pieceType == 'k' and arrayInList(endCoord, self.validCastleOptions(color)):
             self.castleChecks[color][1] = False
             self.castleChecks[color][0 if endCoord[1] == 2 else 2] = False
-            rookStartCoord = np.array([startCoord[0], 0]) if endCoord[1] == 2 else np.array(
-                [startCoord[0], self.xSize - 1])
+            rookStartCoord = self.startCastlingLocationDict[0 if endCoord[1] == 2 else 2]
             rookEndCoord = np.array([startCoord[0], 3]) if endCoord[1] == 2 else np.array(
                 [startCoord[0], self.xSize - 3])
             self.removePieceAt(rookStartCoord)

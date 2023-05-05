@@ -67,11 +67,15 @@ class Board:
         dictionary of single square moves for each piece
         :return:
         """
-        return {'k': [np.array([1, 0]), np.array([1, 1]), np.array([0, 1]), np.array([-1, 1]), np.array([-1, 0]),
-                      np.array([-1, -1]), np.array([0, -1]), np.array([1, -1])],
-                'n': [np.array([2, 1]), np.array([1, 2]), np.array([-1, 2]), np.array([-2, 1]), np.array([-2, -1]),
-                      np.array([-1, -2]), np.array([1, -2]), np.array([2, -1])], 'q': None, 'b': None, 'r': None,
-                'p': None}
+        return self._singleSquareVectorDict
+
+    @singleSquareVectorDict.setter
+    def singleSquareVectorDict(self, none) -> None:
+        self._singleSquareVectorDict = {
+            'k': [np.array([1, 0]), np.array([1, 1]), np.array([0, 1]), np.array([-1, 1]), np.array([-1, 0]),
+                  np.array([-1, -1]), np.array([0, -1]), np.array([1, -1])],
+            'n': [np.array([2, 1]), np.array([1, 2]), np.array([-1, 2]), np.array([-2, 1]), np.array([-2, -1]),
+                  np.array([-1, -2]), np.array([1, -2]), np.array([2, -1])], 'q': None, 'b': None, 'r': None, 'p': None}
 
     @property
     def multiSquareVectorDict(self) -> dict[str, list[npt.NDArray[int]] | None]:
@@ -79,11 +83,18 @@ class Board:
         dictionary of multiple square move directions for each piece
         :return:
         """
-        return {'k': None, 'n': None,
-                'q': [np.array([1, 0]), np.array([1, 1]), np.array([0, 1]), np.array([-1, 1]), np.array([-1, 0]),
-                      np.array([-1, -1]), np.array([0, -1]), np.array([1, -1])],
-                'b': [np.array([1, 1]), np.array([-1, 1]), np.array([-1, -1]), np.array([1, -1])],
-                'r': [np.array([1, 0]), np.array([0, 1]), np.array([-1, 0]), np.array([0, -1])], 'p': None}
+        return self._multiSquareVectorDict
+
+    @multiSquareVectorDict.setter
+    def multiSquareVectorDict(self, none) -> None:
+        self._multiSquareVectorDict = {'k': None, 'n': None,
+                                       'q': [np.array([1, 0]), np.array([1, 1]), np.array([0, 1]), np.array([-1, 1]),
+                                             np.array([-1, 0]), np.array([-1, -1]), np.array([0, -1]),
+                                             np.array([1, -1])],
+                                       'b': [np.array([1, 1]), np.array([-1, 1]), np.array([-1, -1]),
+                                             np.array([1, -1])],
+                                       'r': [np.array([1, 0]), np.array([0, 1]), np.array([-1, 0]), np.array([0, -1])],
+                                       'p': None}
 
     @property
     def startCastlingLocationDict(self) -> dict[int, npt.NDArray | None]:
@@ -91,7 +102,12 @@ class Board:
         dictionary for rook and king initial locations (order is queen side rook, king, king side rook)
         :return:
         """
-        return {-1: np.array([[7, 0], [7, 4], [7, 7]]), 1: np.array([[0, 0], [0, 4], [0, 7]])}
+        return self._startCastlingLocationDict
+
+    @startCastlingLocationDict.setter
+    def startCastlingLocationDict(self, none) -> None:
+        self._startCastlingLocationDict = {-1: [np.array([7, 0]), np.array([7, 4]), np.array([7, 7])],
+                                           1: [np.array([0, 0]), np.array([0, 4]), np.array([0, 7])]}
 
     @property
     def promotionRow(self) -> int:
@@ -181,6 +197,7 @@ class Board:
         self.turnColor, self.castleChecks, self.kingDict, self.checkMoveDict, self.epList, self.halfMoveNum, self.fullMoveNum, self.fenLog, self.algList = 1, {}, {}, {}, [], 0, 1, [], []
         self.board: npt.NDArray[[Piece]] | None = None
         self.epCoord: npt.NDArray[int] | None = None
+        self.singleSquareVectorDict, self.multiSquareVectorDict, self.startCastlingLocationDict = None, None, None
         startFen = customBoard if customBoard is not None else self.defaultStart()
         self.pList = [np.array((0, -1)), np.array((0, 1))]
         self.setFromFEN(startFen)
@@ -827,7 +844,7 @@ class Board:
         """
         color = self.colorAt(coord)
         updateList = self.blockedAtList(coord) + self.capturedList(coord)
-        if self.usesCastling and arrayInList(coord, self.startCastlingLocationDict[color]) and (
+        if self.usesCastling and indexOfArrayInList(coord, self.startCastlingLocationDict[color]) is not None and (
                 self.typeAt(coord) == 'r' or self.typeAt(coord) == 'k'):
             self.castleChecks[color][indexOfArrayInList(coord, self.startCastlingLocationDict[color])] = False
         if self.typeAt(coord) == 'k' and self.kingIsRoyal:
@@ -1026,34 +1043,21 @@ class Board:
         retList = []
         if useCheck and self.inCheck(kingStartCoord, color):
             return retList
-        if self.castleChecks[color][1] and self.castleChecks[color][0]:
-            kv = np.array([0, -1])
-            kingEndCoord = np.array([self.nthRowForColor(0, color), 2])
-            rookStartCoord = self.startCastlingLocationDict[color][0]
-            curCoord = self.iterateUntilNextOccupiedSquare(kingStartCoord, kv, None, skipCoord=rookStartCoord,
-                                                           stopCoord=kingEndCoord,
-                                                           stopForCheckColor=color if useCheck else 0)
-            if np.array_equal(curCoord, kingEndCoord) and not (useCheck and self.inCheck(curCoord, color)):
-                rv = np.array([0, 1])
-                rookEndCoord = np.array([self.nthRowForColor(0, color), 3])
-                curCoord = self.iterateUntilNextOccupiedSquare(rookStartCoord, rv, None, skipCoord=kingStartCoord,
-                                                               stopCoord=rookEndCoord)
-                if np.array_equal(curCoord, rookEndCoord):
-                    retList.append(kingEndCoord)
-        if self.castleChecks[color][1] and self.castleChecks[color][2]:
-            kv = np.array([0, 1])
-            kingEndCoord = np.array([self.nthRowForColor(0, color), self.xSize - 2])
-            rookStartCoord = self.startCastlingLocationDict[color][2]
-            curCoord = self.iterateUntilNextOccupiedSquare(kingStartCoord, kv, None, skipCoord=rookStartCoord,
-                                                           stopCoord=kingEndCoord,
-                                                           stopForCheckColor=color if useCheck else 0)
-            if np.array_equal(curCoord, kingEndCoord) and not (useCheck and self.inCheck(curCoord, color)):
-                rv = np.array([0, -1])
-                rookEndCoord = np.array([self.nthRowForColor(0, color), self.xSize - 3])
-                curCoord = self.iterateUntilNextOccupiedSquare(rookStartCoord, rv, None, skipCoord=kingStartCoord,
-                                                               stopCoord=rookEndCoord)
-                if np.array_equal(curCoord, rookEndCoord):
-                    retList.append(kingEndCoord)
+        for i in [0, 2]:
+            if self.castleChecks[color][1] and self.castleChecks[color][i]:
+                kingEndCoord = np.array([self.nthRowForColor(0, color), 2 if i == 0 else self.xSize - 2])
+                kv = self.vector(kingStartCoord, kingEndCoord)[0]
+                rookStartCoord = self.startCastlingLocationDict[color][i]
+                curCoord = self.iterateUntilNextOccupiedSquare(kingStartCoord, kv, None, skipCoord=rookStartCoord,
+                                                               stopCoord=kingEndCoord,
+                                                               stopForCheckColor=color if useCheck else 0)
+                if np.array_equal(curCoord, kingEndCoord) and not (useCheck and self.inCheck(curCoord, color)):
+                    rookEndCoord = np.array([self.nthRowForColor(0, color), 3 if i == 0 else self.xSize - 3])
+                    rv = self.vector(rookStartCoord, rookEndCoord)[0]
+                    curCoord = self.iterateUntilNextOccupiedSquare(rookStartCoord, rv, None, skipCoord=kingStartCoord,
+                                                                   stopCoord=rookEndCoord)
+                    if np.array_equal(curCoord, rookEndCoord):
+                        retList.append(kingEndCoord)
         return retList
 
     def moveIsValid(self, startCoord: npt.NDArray[int], endCoord: npt.NDArray[int]) -> bool:
@@ -1070,6 +1074,8 @@ class Board:
         elif not 0 <= startCoord[0] < self.ySize or not 0 <= startCoord[1] < self.xSize or not 0 <= endCoord[
             0] < self.ySize or not 0 <= endCoord[1] < self.xSize:
             raise errors.InvalidMoveOffBoard
+        elif pieceType == 'k' and self.usesCastling and arrayInList(endCoord, self.validCastleOptions(color)):
+            return True
         elif self.colorAt(endCoord) * color == 1:
             raise errors.InvalidMoveBlocked
         elif self.usesCheck and self.kingDict[color].inCheck:
@@ -1083,9 +1089,7 @@ class Board:
         elif self.usesCheck and self.exposesKing(startCoord, endCoord, self.kingDict[color].position, color):
             raise errors.InvalidMoveIntoCheck
         elif pieceType == 'k':
-            if self.usesCastling and arrayInList(endCoord, self.validCastleOptions(color)):
-                return True
-            elif not (self.usesCheck and self.inCheck(endCoord, color)) and (
+            if not (self.usesCheck and self.inCheck(endCoord, color)) and (
                     self.canMoveTo(startCoord, endCoord) or self.capturedAt(startCoord, endCoord)):
                 return True
             else:
@@ -1215,7 +1219,7 @@ class Board:
             if startCoord[1] in posList:
                 self.castleChecks[color][posList.index(startCoord[1])] = False
         self.removePieceAt(startCoord)
-        if pieceType == 'p' and endCoord[0] == self.nthRowForColor(0, color * -1):
+        if pieceType == 'p' and endCoord[0] == self.nthRowForColor(self.promotionRow, color):
             self.addPieceAt(endCoord, promotionType, color) if promotionType else self.addPieceAt(endCoord, 'q', color)
         else:
             self.addPieceAt(endCoord, pieceType, color)
